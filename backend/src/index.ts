@@ -1,8 +1,8 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import authRoutes from './routes/auth/auth.routes';
-import learningRoutes from './routes/learning/learning.routes';
+import authRoutes from './routes/auth/auth.routes.js';
+import learningRoutes from './routes/learning/learning.routes.js';
 import routes from './routes/index.js';
 import prisma from './db/index.js';
 
@@ -22,34 +22,32 @@ app.get('/health', (req: Request, res: Response) => {
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/learning', learningRoutes);
-
-if (process.env.NODE_ENV !== 'test') {
-  app.listen(port, () => {
-    console.log(`Server is running on port ${port}`);
-  });
-}
-// API routes
 app.use('/api', routes);
 
-// Graceful shutdown
-const server = app.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
-});
+// Start server only if not in test environment
+let server: ReturnType<typeof app.listen> | null = null;
 
-process.on('SIGINT', async () => {
-  console.log('\nShutting down gracefully...');
-  await prisma.$disconnect();
-  server.close(() => {
-    console.log('Server closed');
-    process.exit(0);
+if (process.env.NODE_ENV !== 'test') {
+  server = app.listen(port, () => {
+    console.log(`Server is running on port ${port}`);
   });
-});
 
-process.on('SIGTERM', async () => {
-  console.log('\nShutting down gracefully...');
-  await prisma.$disconnect();
-  server.close(() => {
-    console.log('Server closed');
-    process.exit(0);
+  // Graceful shutdown
+  process.on('SIGINT', async () => {
+    console.log('\nShutting down gracefully...');
+    await prisma.$disconnect();
+    server?.close(() => {
+      console.log('Server closed');
+      process.exit(0);
+    });
   });
-});
+
+  process.on('SIGTERM', async () => {
+    console.log('\nShutting down gracefully...');
+    await prisma.$disconnect();
+    server?.close(() => {
+      console.log('Server closed');
+      process.exit(0);
+    });
+  });
+}
