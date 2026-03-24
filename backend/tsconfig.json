@@ -7,13 +7,13 @@
 
     // Environment Settings
     // See also https://aka.ms/tsconfig/module
-    "module": "NodeNext",
+    "module": "commonjs",
     "target": "ES2022",
-    "moduleResolution": "NodeNext",
+    "moduleResolution": "bundler",
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "lib": ["ES2022"],
-    "types": ["node"],
+    "types": ["node", "jest"],
 
     // Other Outputs
     "sourceMap": true,
@@ -36,6 +36,7 @@
     "strict": true,
     "skipLibCheck": true
   },
+  "include": ["src/**/*", "tests/**/*"],
   "include": ["src/**/*", "src/generated/**/*"],
   "exclude": ["node_modules"]
 }

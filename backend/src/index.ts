@@ -1,12 +1,14 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import authRoutes from './routes/auth/auth.routes';
+import learningRoutes from './routes/learning/learning.routes';
 import routes from './routes/index.js';
 import prisma from './db/index.js';
 
 dotenv.config();
 
-const app = express();
+export const app = express();
 const port = process.env.PORT || 8080;
 
 app.use(cors());
@@ -17,6 +19,15 @@ app.get('/health', (req: Request, res: Response) => {
   res.json({ status: 'ok', message: 'Web3 Student Lab Backend is running' });
 });
 
+// API Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/learning', learningRoutes);
+
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(port, () => {
+    console.log(`Server is running on port ${port}`);
+  });
+}
 // API routes
 app.use('/api', routes);
 
