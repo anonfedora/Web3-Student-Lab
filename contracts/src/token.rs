@@ -7,7 +7,7 @@ enum DataKey {
     Balance(Address),
 }
 
-#[contracttype]
+#[contracterror]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TokenError {
     AlreadyInitialized = 1,
