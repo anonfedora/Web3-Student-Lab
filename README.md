@@ -35,6 +35,37 @@ The platform provides **interactive tools, coding environments, and guided learn
 - Stellar SDK
 - Soroban Smart Contracts
 
+## 🗺️ Visual Roadmap & Milestones
+
+```mermaid
+timeline
+    title Web3 Student Lab - Development Timeline
+    Phase 1: Discovery : Architecture Planning : Concept Validation : UI/UX Wireframing
+    Phase 2: Development : Core Modules Build : Smart Contract Playground : Backend Integration
+    Phase 3: Deployment : MVP Launch : Beta Testing : University Outreach
+```
+
+### Phase 1: Discovery 🔍
+**Objective:** Define the core platform architecture, validate learning mechanisms, and design the initial curriculum.
+- **Milestones:**
+  - [x] Initial repository setup and architecture planning
+  - [ ] Define Soroban/Stellar learning roadmap
+  - [ ] UI/UX wireframes for the Blockchain Simulator
+
+### Phase 2: Development 🛠️
+**Objective:** Build out the core modules, integrate blockchain functionalities, and develop the interactive playground.
+- **Milestones:**
+  - [ ] Implement Next.js + Tailwind frontend
+  - [ ] Integrate Monaco Editor for Smart Contract Playground
+  - [ ] Set up PostgreSQL and Node.js backend infrastructure
+
+### Phase 3: Deployment 🚀
+**Objective:** Launch the MVP, onboard the first cohort of students, and gather metrics for future iterations.
+- **Milestones:**
+  - [ ] Deploy backend and database to cloud infrastructure
+  - [ ] Host the frontend application
+  - [ ] Open the platform for beta testing
+
 ## 📁 Repository Structure
 
 ```text
@@ -75,9 +106,11 @@ The easiest way to set up the local development environment (backend and databas
 - **View logs**: `docker compose logs -f`
 - **Restart a specific service**: `docker compose restart backend`
 
-## 🤝 Contributing
+## 🤝 Rules for Contributors
 
-We love our contributors! This project is being built for students, by students and open-source enthusiasts. 
+We love our contributors! This project is being built for students, by students and open-source enthusiasts.
+
+> **Important:** Please add an ETA (no more than 2 days) when expressing interest in an issue to help us keep development moving quickly.
 
 To start contributing:
 1. Read our [Contribution Guidelines](CONTRIBUTING.md).
