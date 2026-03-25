@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
-import { Module, Lesson, Progress } from './types';
+import { Module, Lesson, Progress } from './types.js';
+import prisma from '../../db/index.js';
 
 const router = Router();
 
@@ -49,8 +50,7 @@ const modules: Module[] = [
   },
 ];
 
-// Mock user progress storage
-const userProgress: Map<string, Progress> = new Map();
+// Prisma handles progress storage now
 
 /**
  * @route   GET /api/learning/modules
@@ -104,10 +104,12 @@ router.get('/modules/:moduleId', (req: Request, res: Response) => {
  * @desc    Get user learning progress
  * @access  Public
  */
-router.get('/progress/:userId', (req: Request, res: Response) => {
+router.get('/progress/:userId', async (req: Request, res: Response) => {
   try {
     const userId = req.params.userId as string;
-    const progress = userProgress.get(userId);
+    const progress = await prisma.learningProgress.findUnique({
+      where: { userId },
+    });
 
     if (!progress) {
       // Return default progress if user has no progress yet
@@ -133,7 +135,7 @@ router.get('/progress/:userId', (req: Request, res: Response) => {
  * @desc    Mark a lesson as complete
  * @access  Public
  */
-router.post('/progress/:userId/complete', (req: Request, res: Response) => {
+router.post('/progress/:userId/complete', async (req: Request, res: Response) => {
   try {
     const userId = req.params.userId as string;
     const { lessonId } = req.body;
@@ -153,33 +155,42 @@ router.post('/progress/:userId/complete', (req: Request, res: Response) => {
       return;
     }
 
-    // Get or create user progress
-    let progress = userProgress.get(userId);
+    // Get user progress from DB
+    let progressRecord = await prisma.learningProgress.findUnique({
+      where: { userId }
+    });
 
-    if (!progress) {
-      progress = {
-        userId,
-        completedLessons: [],
-        currentModule: 'mod-1',
-        percentage: 0,
-      };
-    }
+    let completedLessons = progressRecord ? progressRecord.completedLessons : [];
+    let percentage = progressRecord ? progressRecord.percentage : 0;
 
     // Mark lesson as complete if not already
-    if (!progress.completedLessons.includes(lessonId)) {
-      progress.completedLessons.push(lessonId);
+    if (!completedLessons.includes(lessonId)) {
+      completedLessons.push(lessonId);
 
       // Calculate new percentage
       const totalLessons = modules.reduce(
         (acc, mod) => acc + mod.lessons.length,
         0
       );
-      progress.percentage = Math.round(
-        (progress.completedLessons.length / totalLessons) * 100
+      percentage = Math.round(
+        (completedLessons.length / totalLessons) * 100
       );
     }
 
-    userProgress.set(userId, progress);
+    // Save back to DB
+    const progress = await prisma.learningProgress.upsert({
+      where: { userId },
+      update: {
+        completedLessons,
+        percentage
+      },
+      create: {
+        userId,
+        completedLessons,
+        currentModule: 'mod-1',
+        percentage
+      }
+    });
 
     res.json({ progress, message: 'Lesson marked as complete' });
   } catch (error) {
