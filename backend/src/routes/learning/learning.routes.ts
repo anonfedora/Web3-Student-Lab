@@ -69,7 +69,7 @@ router.get('/modules', (req: Request, res: Response) => {
     }
 
     res.json({ modules: filteredModules });
-  } catch (error) {
+  } catch (_error) {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -90,7 +90,7 @@ router.get('/modules/:moduleId', (req: Request, res: Response) => {
     }
 
     res.json({ module });
-  } catch (error) {
+  } catch (_error) {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -106,7 +106,7 @@ router.get('/progress/:userId', async (req: Request, res: Response) => {
     const progress = await getStudentProgress(userId);
 
     res.json({ progress });
-  } catch (error) {
+  } catch (_error) {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -137,7 +137,7 @@ router.post('/progress/:userId/complete', async (req: Request, res: Response) =>
     const progress = await updateProgress(userId, lessonId);
 
     res.json({ progress, message: 'Lesson marked as complete' });
-  } catch (error) {
+  } catch (_error) {
     res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -1,7 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
-import Link from 'next/link';
+import { useEffect, useState } from 'react';
 
 interface Transaction {
   id: string;
@@ -24,7 +23,6 @@ export default function SimulatorPage() {
   const [ledgers, setLedgers] = useState<Ledger[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLive, setIsLive] = useState(true);
-  const scrollRef = useRef<HTMLDivElement>(null);
 
   // Generate fake live data
   useEffect(() => {
@@ -66,7 +64,7 @@ export default function SimulatorPage() {
     <div className="min-h-[calc(100vh-80px)] bg-black text-white p-6 md:p-12 relative overflow-hidden font-mono">
       {/* Background Grid Accent */}
       <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none"></div>
-      
+
       <div className="max-w-7xl mx-auto relative z-10 h-full flex flex-col">
         {/* Header */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-10 gap-6">
@@ -79,7 +77,7 @@ export default function SimulatorPage() {
               <div className={`w-2 h-2 rounded-full ${isLive ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
               <span className="text-[10px] uppercase font-bold tracking-widest">{isLive ? 'Live Feed' : 'Paused'}</span>
             </div>
-            <button 
+            <button
               onClick={() => setIsLive(!isLive)}
               className="px-4 py-2 bg-white text-black text-[10px] font-black uppercase tracking-widest hover:bg-gray-200 transition-colors"
             >
@@ -89,7 +87,7 @@ export default function SimulatorPage() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 flex-grow">
-          
+
           {/* Recent Ledgers */}
           <div className="lg:col-span-1 bg-zinc-950 border border-white/10 p-6 rounded-2xl flex flex-col shadow-2xl">
             <h3 className="text-sm font-bold border-b border-white/10 pb-4 mb-6 uppercase tracking-widest flex items-center justify-between">
@@ -160,7 +158,7 @@ export default function SimulatorPage() {
 
         </div>
       </div>
-      
+
       <style jsx>{`
         .custom-scrollbar::-webkit-scrollbar {
           width: 4px;

@@ -19,8 +19,8 @@ describe('Learning Module Integration Tests', () => {
       expect(response.body).toHaveProperty('modules');
 
       // Check that all returned lessons are beginner level
-      response.body.modules.forEach((module: any) => {
-        module.lessons.forEach((lesson: any) => {
+      response.body.modules.forEach((module: { lessons: { difficulty: string }[] }) => {
+        module.lessons.forEach((lesson: { difficulty: string }) => {
           expect(lesson.difficulty).toBe('beginner');
         });
       });

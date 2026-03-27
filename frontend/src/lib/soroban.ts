@@ -1,4 +1,4 @@
-import { Address, StrKey, rpc, Contract, xdr, scValToNative } from '@stellar/stellar-sdk';
+import { Contract, StrKey, rpc, scValToNative, xdr } from '@stellar/stellar-sdk';
 
 const SOROBAN_RPC_URL = process.env.NEXT_PUBLIC_SOROBAN_RPC_URL || 'https://soroban-test.stellar.org:443';
 const CERTIFICATE_CONTRACT_ID = process.env.NEXT_PUBLIC_CERTIFICATE_CONTRACT_ID || '';
@@ -36,13 +36,18 @@ export const verifyCertificateOnChain = async (
 
     // Call the contract
     const result = await server.simulateTransaction(
-        new Contract(CERTIFICATE_CONTRACT_ID).call('get_certificate', ...args) as any
+        new Contract(CERTIFICATE_CONTRACT_ID).call('get_certificate', ...args) as unknown as rpc.Api.SimulateTransactionResponse
     );
 
     if (rpc.Api.isSimulationSuccess(result)) {
       const entry = result.result?.retval;
       if (entry) {
-        const data = scValToNative(entry);
+        const data = scValToNative(entry) as {
+          symbol: string;
+          student: string;
+          course_name: string;
+          issue_date: bigint;
+        };
         return {
           symbol: data.symbol,
           student: data.student,
@@ -51,7 +56,7 @@ export const verifyCertificateOnChain = async (
         };
       }
     }
-    
+
     return null;
   } catch (error) {
     console.error('Error verifying certificate on-chain:', error);
@@ -76,14 +81,14 @@ export const issueCertificateOnChain = async (
     }
 
     console.log('Issuing certificate:', { symbol, student, courseName });
-    
+
     // TODO: Implement actual certificate issuance
     // This requires:
     // 1. Building the contract call transaction
     // 2. Getting it signed by the wallet
     // 3. Submitting to the network
     // 4. Waiting for confirmation
-    
+
     return 'transaction_hash_placeholder';
   } catch (error) {
     console.error('Error issuing certificate on-chain:', error);

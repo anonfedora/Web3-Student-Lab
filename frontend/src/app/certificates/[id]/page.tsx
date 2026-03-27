@@ -1,19 +1,19 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { certificatesAPI, Certificate } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
+import { Certificate, certificatesAPI } from '@/lib/api';
+import Link from 'next/link';
+import { useParams, useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 
 export default function CertificateNFTPage() {
   const params = useParams();
   const router = useRouter();
-  const { user } = useAuth();
+  useAuth();
   const [certificate, setCertificate] = useState<Certificate | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isVerifying, setIsVerifying] = useState(false);
-  const [verificationResult, setVerificationResult] = useState<any>(null);
+  const [verificationResult, setVerificationResult] = useState<unknown>(null);
 
   useEffect(() => {
     async function loadCertificate() {
@@ -64,17 +64,17 @@ export default function CertificateNFTPage() {
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-red-600/10 rounded-full blur-[150px] pointer-events-none"></div>
 
       <div className="max-w-5xl mx-auto relative z-10 flex flex-col lg:flex-row gap-12 items-center lg:items-start">
-        
+
         {/* NFT Asset Card Column */}
         <div className="w-full lg:w-1/2 flex justify-center">
           <div className="relative group perspective-1000 w-full max-w-sm">
             {/* Ambient Card Glow */}
             <div className="absolute -inset-1 bg-gradient-to-r from-red-600 to-red-900 rounded-[2rem] blur opacity-30 group-hover:opacity-60 transition duration-1000 group-hover:duration-200"></div>
-            
+
             {/* The Asset Itself */}
             <div className="relative bg-zinc-950 border border-white/20 rounded-[2rem] p-8 aspect-[3/4] flex flex-col justify-between shadow-2xl transform transition-transform duration-500 hover:scale-[1.02]">
               <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 contrast-150 rounded-[2rem] mix-blend-overlay pointer-events-none"></div>
-              
+
               <div className="relative z-10 flex justify-between items-start">
                 <div className="w-12 h-12 bg-red-600 rounded-full flex items-center justify-center shadow-[0_0_20px_rgba(220,38,38,0.5)]">
                   <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
@@ -130,7 +130,7 @@ export default function CertificateNFTPage() {
 
           <div className="bg-zinc-950 border border-white/10 rounded-2xl p-6 shadow-xl">
             <h3 className="text-sm font-bold text-white uppercase tracking-widest mb-6 border-b border-white/10 pb-4">Token Metadata</h3>
-            
+
             <div className="space-y-4 font-mono text-sm">
               <div className="flex justify-between items-center bg-black border border-white/5 p-3 rounded">
                 <span className="text-gray-500">Asset ID</span>
@@ -156,7 +156,7 @@ export default function CertificateNFTPage() {
                onClick={verifyOnChain}
                disabled={isVerifying}
               className={`flex-1 py-4 font-black uppercase tracking-widest rounded-xl transition-all ${
-                isVerifying 
+                isVerifying
                   ? 'bg-zinc-800 text-gray-500 cursor-wait'
                   : 'bg-white text-black hover:bg-gray-200 shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_30px_rgba(255,255,255,0.3)]'
               }`}

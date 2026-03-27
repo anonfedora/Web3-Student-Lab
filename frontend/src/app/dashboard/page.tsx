@@ -1,15 +1,15 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { coursesAPI, certificatesAPI, enrollmentsAPI, Course, Certificate, Enrollment } from '@/lib/api';
+import { Certificate, certificatesAPI, Course, coursesAPI, Enrollment, enrollmentsAPI } from '@/lib/api';
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
 
 export default function DashboardPage() {
   const { user, logout } = useAuth();
   const [courses, setCourses] = useState<Course[]>([]);
   const [certificates, setCertificates] = useState<Certificate[]>([]);
-  const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
+  const [, setEnrollments] = useState<Enrollment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [stats, setStats] = useState({
     totalCourses: 0,

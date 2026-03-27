@@ -1,7 +1,7 @@
 'use client';
 
+import { CertificateData, verifyCertificateOnChain } from '@/lib/soroban';
 import { useState } from 'react';
-import { verifyCertificateOnChain, CertificateData } from '@/lib/soroban';
 
 export default function VerifyCertificatePage() {
   const [certificateId, setCertificateId] = useState('');
@@ -21,15 +21,16 @@ export default function VerifyCertificatePage() {
 
     try {
       const data = await verifyCertificateOnChain(certificateId.trim());
-      
+
       if (data) {
         setResult(data);
         setVerified(true);
       } else {
         setError('Certificate not found on blockchain');
       }
-    } catch (err: any) {
-      setError(err.message || 'Failed to verify certificate');
+    } catch (err) {
+      const errorMsg = (err as Error).message || 'Failed to verify certificate';
+      setError(errorMsg);
     } finally {
       setIsVerifying(false);
     }
@@ -59,7 +60,7 @@ export default function VerifyCertificatePage() {
         {/* Verification Form */}
         <div className="bg-zinc-950 border border-white/10 rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.5)] p-10 mb-10 relative overflow-hidden">
           <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-600 to-transparent"></div>
-          
+
           <form onSubmit={handleVerify} className="space-y-8">
             <div>
               <label htmlFor="certificateId" className="block text-sm font-bold text-gray-400 mb-3 uppercase tracking-widest">
@@ -125,7 +126,7 @@ export default function VerifyCertificatePage() {
         {result && verified && (
           <div className="bg-black border border-green-500/30 shadow-[0_0_30px_rgba(34,197,94,0.1)] rounded-2xl p-10 mb-10 relative overflow-hidden">
             <div className="absolute top-0 right-0 w-32 h-32 bg-green-500/10 rounded-bl-full pointer-events-none"></div>
-            
+
             <div className="flex items-start gap-5 mb-8 relative z-10">
               <div className="w-14 h-14 bg-green-500/10 border border-green-500/30 rounded-xl flex items-center justify-center flex-shrink-0 shadow-[0_0_15px_rgba(34,197,94,0.3)]">
                 <svg className="w-8 h-8 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -192,11 +193,11 @@ export default function VerifyCertificatePage() {
         {/* Info Section */}
         <div className="mt-16 bg-zinc-950 border border-white/10 rounded-2xl p-10 shadow-sm relative overflow-hidden">
           <div className="absolute -left-12 -bottom-12 w-32 h-32 bg-red-600/10 rounded-full blur-[40px] pointer-events-none"></div>
-          
+
           <h2 className="text-xl font-black text-white mb-6 uppercase tracking-widest flex items-center gap-3">
             <span className="w-8 h-px bg-red-600"></span> Protocol Specs
           </h2>
-          
+
           <div className="space-y-6 text-gray-400 font-light">
             <p className="leading-relaxed">
               Credentials mapped to the Web3 Student Lab are permanently minted on the Stellar blockchain via highly optimized Soroban smart contracts. This cryptographic attestation guarantees unforgeable proof-of-knowledge.

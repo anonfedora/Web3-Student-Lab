@@ -1,10 +1,10 @@
 import cors from 'cors';
 import dotenv from 'dotenv';
 import express, { Request, Response } from 'express';
+import { rateLimit } from 'express-rate-limit';
 import prisma from './db/index.js';
 import { requestLogger } from './middleware/requestLogger.js';
 import routes from './routes/index.js';
-import { rateLimit } from 'express-rate-limit';
 import { validateEnvironment } from './utils/checkEnv.js';
 import logger from './utils/logger.js';
 
@@ -36,7 +36,7 @@ app.use(limiter);
 app.use(requestLogger);
 
 // Health check endpoint
-app.get('/health', (req: Request, res: Response) => {
+app.get('/health', (_req: Request, res: Response) => {
   res.json({
     status: 'ok',
     message: 'Web3 Student Lab Backend is running',

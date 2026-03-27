@@ -66,6 +66,25 @@ export interface Feedback {
   course?: Course;
 }
 
+export interface DashboardStats {
+  coursesCount: number;
+  studentsCount: number;
+  certificatesCount: number;
+  verificationRate: string;
+}
+
+export interface StudentDashboard {
+  userId: string;
+  progress: any;
+  certificates: Certificate[];
+  tokenBalance: {
+    symbol: string;
+    balance: number;
+    lastUpdated: string;
+  };
+  recentActivity: string[];
+}
+
 // Authentication APIs
 export const authAPI = {
   register: async (data: RegisterRequest): Promise<AuthResponse> => {

@@ -3,13 +3,21 @@ import { Router } from 'express';
 const router = Router();
 
 // Robust Mock Database for 100% Demo Uptime
-let enrollments: any[] = [];
+interface Enrollment {
+  id: string;
+  studentId: string;
+  courseId: string;
+  status: string;
+  enrolledAt: string;
+}
+
+let enrollments: Enrollment[] = [];
 
 // GET /api/enrollments - Get all enrollments
 router.get('/', async (req, res) => {
   try {
     res.json(enrollments);
-  } catch (error) {
+  } catch (_error) {
     res.status(500).json({ error: 'Failed to fetch enrollments' });
   }
 });
@@ -25,7 +33,7 @@ router.get('/:id', async (req, res) => {
     }
 
     res.json(enrollment);
-  } catch (error) {
+  } catch (_error) {
     res.status(500).json({ error: 'Failed to fetch enrollment' });
   }
 });
@@ -55,7 +63,7 @@ router.post('/', async (req, res) => {
 
     enrollments.push(newEnrollment);
     res.status(201).json(newEnrollment);
-  } catch (error) {
+  } catch (_error) {
     res.status(500).json({ error: 'Failed to enroll student' });
   }
 });
@@ -71,9 +79,12 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Enrollment not found' });
     }
 
-    enrollments[index] = { ...enrollments[index], status };
-    res.json(enrollments[index]);
-  } catch (error) {
+    const enrollment = enrollments[index];
+    if (enrollment) {
+      enrollment.status = status;
+      res.json(enrollment);
+    }
+  } catch (_error) {
     res.status(500).json({ error: 'Failed to update enrollment' });
   }
 });
@@ -84,7 +95,7 @@ router.delete('/:id', async (req, res) => {
     const { id } = req.params;
     enrollments = enrollments.filter((e) => e.id !== id);
     res.status(204).send();
-  } catch (error) {
+  } catch (_error) {
     res.status(500).json({ error: 'Failed to unenroll student' });
   }
 });
