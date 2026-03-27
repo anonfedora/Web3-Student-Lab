@@ -1,5 +1,6 @@
 #![no_std]
 
+pub mod fuzz;
 pub mod token;
 
 use soroban_sdk::{contract, contracterror, contractimpl, contracttype, Address, Env, String, Symbol, Vec};
