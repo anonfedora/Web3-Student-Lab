@@ -10,6 +10,8 @@ If you've noticed a bug or have a feature request, make sure to check our [Issue
 
 If this is something you think you can fix, then fork Web3 Student Lab and create a branch with a descriptive name.
 
+Before committing, read [Git Commit Guidelines](CONTRIBUTING_GIT.md) for required commit prefixes and commit message format.
+
 ## 3. Get the code working locally
 
 ### Development Tooling
