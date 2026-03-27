@@ -19,7 +19,7 @@ export const getStudentAchievements = async (studentId: string): Promise<Blockch
     },
   });
 
-  return certificates.map((cert) => ({
+  return certificates.map((cert: (typeof certificates)[number]): BlockchainRecord => ({
     id: cert.id,
     txHash: cert.certificateHash || `0x${Math.random().toString(16).substring(2, 40)}`,
     timestamp: cert.issuedAt,

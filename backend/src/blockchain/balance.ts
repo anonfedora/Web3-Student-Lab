@@ -1,5 +1,5 @@
-import { Router, Request, Response } from 'express';
 import { Horizon } from '@stellar/stellar-sdk';
+import { Request, Response, Router } from 'express';
 import { HORIZON_URL } from '../config/rpcConfig.js';
 
 const router = Router();
@@ -9,7 +9,7 @@ const router = Router();
  * Returns the XLM balance of a given Stellar public key.
  */
 router.get('/balance/:publicKey', async (req: Request, res: Response) => {
-  const { publicKey } = req.params;
+  const publicKey = req.params['publicKey'] as string;
 
   if (!publicKey || !/^G[A-Z2-7]{55}$/.test(publicKey)) {
     res.status(400).json({
@@ -21,7 +21,7 @@ router.get('/balance/:publicKey', async (req: Request, res: Response) => {
 
   try {
     const server = new Horizon.Server(HORIZON_URL);
-    const account = await server.loadAccount(publicKey);
+    const account = await server.loadAccount(publicKey as string);
 
     const nativeBalance = account.balances.find((b) => b.asset_type === 'native');
 

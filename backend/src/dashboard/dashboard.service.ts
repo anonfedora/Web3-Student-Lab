@@ -33,6 +33,7 @@ export const getStudentDashboard = async (studentId: string): Promise<StudentDas
     return {
       userId: studentId,
       progress: {
+        id: 'mock-progress-1',
         studentId,
         courseId: 'course-1',
         completedLessons: ['lesson-1', 'lesson-2'],
@@ -108,6 +109,7 @@ export const getStudentDashboard = async (studentId: string): Promise<StudentDas
   return {
     userId: studentId,
     progress: learningProgress ?? {
+      id: '',
       studentId,
       courseId: enrolledCourseId,
       completedLessons: [],

@@ -6,6 +6,7 @@ interface Enrollment {
   id: string;
   studentId: string;
   courseId: string;
+  status: string;
   enrolledAt: string;
 }
 
@@ -78,7 +79,8 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Enrollment not found' });
     }
 
-    enrollments[index] = { ...enrollments[index], status };
+    const current = enrollments[index]!;
+    enrollments[index] = { ...current, status };
     res.json(enrollments[index]);
   } catch {
     res.status(500).json({ error: 'Failed to update enrollment' });

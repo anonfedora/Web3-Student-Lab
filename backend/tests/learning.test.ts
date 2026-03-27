@@ -20,7 +20,7 @@ const courseFixtures = [
 ];
 
 const registerStudent = async (email: string) => {
-  const response = await request(app).post('/api/auth/register').send({
+  const response = await request(app).post('/api/v1/auth/register').send({
     email,
     password: 'password123',
     firstName: 'Test',
@@ -51,9 +51,9 @@ describe('Learning Module Integration Tests', () => {
     await prisma.$disconnect();
   });
 
-  describe('GET /api/learning/courses', () => {
+  describe('GET /api/v1/learning/courses', () => {
     it('returns course curriculum data', async () => {
-      const response = await request(app).get('/api/learning/courses').expect(200);
+      const response = await request(app).get('/api/v1/learning/courses').expect(200);
 
       expect(response.body.courses).toHaveLength(2);
       expect(response.body.courses[0]).toHaveProperty('modules');
@@ -62,7 +62,7 @@ describe('Learning Module Integration Tests', () => {
 
     it('filters nested lessons by difficulty', async () => {
       const response = await request(app)
-        .get('/api/learning/courses?difficulty=beginner')
+        .get('/api/v1/learning/courses?difficulty=beginner')
         .expect(200);
 
       response.body.courses.forEach((course: any) => {
@@ -75,25 +75,25 @@ describe('Learning Module Integration Tests', () => {
     });
   });
 
-  describe('GET /api/learning/courses/:courseId', () => {
+  describe('GET /api/v1/learning/courses/:courseId', () => {
     it('returns a single course with curriculum', async () => {
-      const response = await request(app).get('/api/learning/courses/course-1').expect(200);
+      const response = await request(app).get('/api/v1/learning/courses/course-1').expect(200);
 
       expect(response.body.course.id).toBe('course-1');
       expect(response.body.course.modules.length).toBeGreaterThan(0);
     });
 
     it('returns 404 when the course does not exist', async () => {
-      const response = await request(app).get('/api/learning/courses/unknown-course').expect(404);
+      const response = await request(app).get('/api/v1/learning/courses/unknown-course').expect(404);
 
       expect(response.body.error).toBe('Course not found');
     });
   });
 
-  describe('GET /api/learning/courses/:courseId/progress', () => {
+  describe('GET /api/v1/learning/courses/:courseId/progress', () => {
     it('rejects unauthenticated access', async () => {
       const response = await request(app)
-        .get('/api/learning/courses/course-1/progress')
+        .get('/api/v1/learning/courses/course-1/progress')
         .expect(401);
 
       expect(response.body.error).toBe('Authorization token required');
@@ -103,7 +103,7 @@ describe('Learning Module Integration Tests', () => {
       const student = await registerStudent('progress-default@example.com');
 
       const response = await request(app)
-        .get('/api/learning/courses/course-1/progress')
+        .get('/api/v1/learning/courses/course-1/progress')
         .set('Authorization', `Bearer ${student.token}`)
         .expect(200);
 
@@ -130,7 +130,7 @@ describe('Learning Module Integration Tests', () => {
       });
 
       const response = await request(app)
-        .get('/api/learning/courses/course-1/progress')
+        .get('/api/v1/learning/courses/course-1/progress')
         .set('Authorization', `Bearer ${secondStudent.token}`)
         .expect(200);
 
@@ -139,12 +139,12 @@ describe('Learning Module Integration Tests', () => {
     });
   });
 
-  describe('PATCH /api/learning/courses/:courseId/progress', () => {
+  describe('PATCH /api/v1/learning/courses/:courseId/progress', () => {
     it('creates progress on first update and persists it', async () => {
       const student = await registerStudent('progress-update@example.com');
 
       const response = await request(app)
-        .patch('/api/learning/courses/course-1/progress')
+        .patch('/api/v1/learning/courses/course-1/progress')
         .set('Authorization', `Bearer ${student.token}`)
         .send({
           lessonId: 'course-1-lesson-1',
@@ -173,7 +173,7 @@ describe('Learning Module Integration Tests', () => {
       const student = await registerStudent('progress-upsert@example.com');
 
       await request(app)
-        .patch('/api/learning/courses/course-1/progress')
+        .patch('/api/v1/learning/courses/course-1/progress')
         .set('Authorization', `Bearer ${student.token}`)
         .send({
           lessonId: 'course-1-lesson-1',
@@ -182,7 +182,7 @@ describe('Learning Module Integration Tests', () => {
         .expect(200);
 
       const response = await request(app)
-        .patch('/api/learning/courses/course-1/progress')
+        .patch('/api/v1/learning/courses/course-1/progress')
         .set('Authorization', `Bearer ${student.token}`)
         .send({
           lessonId: 'course-1-lesson-2',
@@ -211,7 +211,7 @@ describe('Learning Module Integration Tests', () => {
       const student = await registerStudent('invalid-percentage@example.com');
 
       const response = await request(app)
-        .patch('/api/learning/courses/course-1/progress')
+        .patch('/api/v1/learning/courses/course-1/progress')
         .set('Authorization', `Bearer ${student.token}`)
         .send({
           lessonId: 'course-1-lesson-1',
@@ -227,7 +227,7 @@ describe('Learning Module Integration Tests', () => {
       const student = await registerStudent('invalid-course-param@example.com');
 
       const response = await request(app)
-        .patch('/api/learning/courses/%20/progress')
+        .patch('/api/v1/learning/courses/%20/progress')
         .set('Authorization', `Bearer ${student.token}`)
         .send({
           lessonId: 'course-1-lesson-1',
@@ -242,7 +242,7 @@ describe('Learning Module Integration Tests', () => {
       const student = await registerStudent('unknown-lesson@example.com');
 
       const response = await request(app)
-        .patch('/api/learning/courses/course-1/progress')
+        .patch('/api/v1/learning/courses/course-1/progress')
         .set('Authorization', `Bearer ${student.token}`)
         .send({
           lessonId: 'course-2-lesson-1',
@@ -258,7 +258,7 @@ describe('Learning Module Integration Tests', () => {
       const secondStudent = await registerStudent('other-progress@example.com');
 
       await request(app)
-        .patch('/api/learning/courses/course-1/progress')
+        .patch('/api/v1/learning/courses/course-1/progress')
         .set('Authorization', `Bearer ${firstStudent.token}`)
         .send({
           lessonId: 'course-1-lesson-1',
@@ -267,7 +267,7 @@ describe('Learning Module Integration Tests', () => {
         .expect(200);
 
       const response = await request(app)
-        .patch('/api/learning/courses/course-1/progress')
+        .patch('/api/v1/learning/courses/course-1/progress')
         .set('Authorization', `Bearer ${secondStudent.token}`)
         .send({
           lessonId: 'course-1-lesson-2',

@@ -1,9 +1,10 @@
 {
   "generators": {
-    "address": 3,
+    "address": 4,
     "nonce": 0
   },
   "auth": [
+    [],
     [],
     [],
     [],
@@ -12,7 +13,7 @@
   "ledger": {
     "protocol_version": 22,
     "sequence_number": 0,
-    "timestamp": 1234,
+    "timestamp": 0,
     "network_id": "0000000000000000000000000000000000000000000000000000000000000000",
     "base_reserve": 0,
     "min_persistent_entry_ttl": 4096,
@@ -58,7 +59,7 @@
                                 "symbol": "course_symbol"
                               },
                               "val": {
-                                "symbol": "SOLID"
+                                "symbol": "UNIQ"
                               }
                             },
                             {
@@ -78,7 +79,7 @@
                                 "symbol": "course_name"
                               },
                               "val": {
-                                "string": "Rust 101"
+                                "string": "Soroban 101"
                               }
                             },
                             {
@@ -86,7 +87,7 @@
                                 "symbol": "course_symbol"
                               },
                               "val": {
-                                "symbol": "SOLID"
+                                "symbol": "UNIQ"
                               }
                             },
                             {
@@ -94,7 +95,7 @@
                                 "symbol": "issue_date"
                               },
                               "val": {
-                                "u64": 1234
+                                "u64": 0
                               }
                             },
                             {
@@ -111,6 +112,72 @@
                               },
                               "val": {
                                 "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                              }
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "key": {
+                          "map": [
+                            {
+                              "key": {
+                                "symbol": "course_symbol"
+                              },
+                              "val": {
+                                "symbol": "UNIQ"
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "student"
+                              },
+                              "val": {
+                                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
+                              }
+                            }
+                          ]
+                        },
+                        "val": {
+                          "map": [
+                            {
+                              "key": {
+                                "symbol": "course_name"
+                              },
+                              "val": {
+                                "string": "Soroban 101"
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "course_symbol"
+                              },
+                              "val": {
+                                "symbol": "UNIQ"
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "issue_date"
+                              },
+                              "val": {
+                                "u64": 0
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "revoked"
+                              },
+                              "val": {
+                                "bool": false
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "student"
+                              },
+                              "val": {
+                                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
                               }
                             }
                           ]

@@ -39,10 +39,10 @@ describe('Generator API Integration Tests', () => {
     app = module.app;
   });
 
-  describe('POST /api/generator/generate', () => {
+  describe('POST /api/v1/generator/generate', () => {
     it('should generate a project idea with valid input', async () => {
       const response = await request(app)
-        .post('/api/generator/generate')
+        .post('/api/v1/generator/generate')
         .send({
           theme: 'Environment',
           techStack: ['React', 'Solidity'],
@@ -58,7 +58,7 @@ describe('Generator API Integration Tests', () => {
 
     it('should return 400 if required fields are missing', async () => {
       const response = await request(app)
-        .post('/api/generator/generate')
+        .post('/api/v1/generator/generate')
         .send({
           theme: 'Environment',
           // missing techStack and difficulty

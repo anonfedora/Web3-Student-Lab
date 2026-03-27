@@ -16,7 +16,7 @@ describe('Feedback Module Integration Tests', () => {
     await prisma.course.deleteMany();
 
     // Create a test student
-    const studentResponse = await request(app).post('/api/auth/register').send({
+    const studentResponse = await request(app).post('/api/v1/auth/register').send({
       email: 'test@example.com',
       password: 'password123',
       firstName: 'Test',
@@ -51,7 +51,7 @@ describe('Feedback Module Integration Tests', () => {
     await prisma.$disconnect();
   });
 
-  describe('POST /api/feedback', () => {
+  describe('POST /api/v1/feedback', () => {
     it('should submit feedback for a course successfully', async () => {
       const feedbackData = {
         courseId,
@@ -60,7 +60,7 @@ describe('Feedback Module Integration Tests', () => {
       };
 
       const response = await request(app)
-        .post('/api/feedback')
+        .post('/api/v1/feedback')
         .set('Authorization', `Bearer ${authToken}`)
         .send(feedbackData)
         .expect(201);
@@ -75,7 +75,7 @@ describe('Feedback Module Integration Tests', () => {
 
     it('should return 400 if courseId is missing', async () => {
       const response = await request(app)
-        .post('/api/feedback')
+        .post('/api/v1/feedback')
         .set('Authorization', `Bearer ${authToken}`)
         .send({ rating: 5 })
         .expect(400);
@@ -85,7 +85,7 @@ describe('Feedback Module Integration Tests', () => {
 
     it('should return 400 if rating is invalid', async () => {
       const response = await request(app)
-        .post('/api/feedback')
+        .post('/api/v1/feedback')
         .set('Authorization', `Bearer ${authToken}`)
         .send({ courseId, rating: 6 })
         .expect(400);
@@ -105,7 +105,7 @@ describe('Feedback Module Integration Tests', () => {
       });
 
       const response = await request(app)
-        .post('/api/feedback')
+        .post('/api/v1/feedback')
         .set('Authorization', `Bearer ${authToken}`)
         .send({ courseId: otherCourse.id, rating: 4 })
         .expect(403);
@@ -115,7 +115,7 @@ describe('Feedback Module Integration Tests', () => {
 
     it('should return 401 without authentication', async () => {
       const response = await request(app)
-        .post('/api/feedback')
+        .post('/api/v1/feedback')
         .send({ courseId, rating: 5 })
         .expect(401);
 
@@ -123,17 +123,17 @@ describe('Feedback Module Integration Tests', () => {
     });
   });
 
-  describe('GET /api/feedback/course/:courseId', () => {
+  describe('GET /api/v1/feedback/course/:courseId', () => {
     beforeEach(async () => {
       // Create some feedback
       await request(app)
-        .post('/api/feedback')
+        .post('/api/v1/feedback')
         .set('Authorization', `Bearer ${authToken}`)
         .send({ courseId, rating: 5, review: 'Great!' });
     });
 
     it('should fetch all feedback for a course', async () => {
-      const response = await request(app).get(`/api/feedback/course/${courseId}`).expect(200);
+      const response = await request(app).get(`/api/v1/feedback/course/${courseId}`).expect(200);
 
       expect(Array.isArray(response.body)).toBe(true);
       expect(response.body.length).toBe(1);
@@ -142,24 +142,24 @@ describe('Feedback Module Integration Tests', () => {
     });
 
     it('should return 404 for non-existent course', async () => {
-      const response = await request(app).get('/api/feedback/course/non-existent-id').expect(404);
+      const response = await request(app).get('/api/v1/feedback/course/non-existent-id').expect(404);
 
       expect(response.body).toHaveProperty('error');
     });
   });
 
-  describe('GET /api/feedback/course/:courseId/summary', () => {
+  describe('GET /api/v1/feedback/course/:courseId/summary', () => {
     beforeEach(async () => {
       // Create feedback with different ratings
       await request(app)
-        .post('/api/feedback')
+        .post('/api/v1/feedback')
         .set('Authorization', `Bearer ${authToken}`)
         .send({ courseId, rating: 5 });
     });
 
     it('should return rating summary for a course', async () => {
       const response = await request(app)
-        .get(`/api/feedback/course/${courseId}/summary`)
+        .get(`/api/v1/feedback/course/${courseId}/summary`)
         .expect(200);
 
       expect(response.body).toHaveProperty('courseId', courseId);
@@ -170,17 +170,17 @@ describe('Feedback Module Integration Tests', () => {
     });
   });
 
-  describe('GET /api/feedback/my-feedback/:courseId', () => {
+  describe('GET /api/v1/feedback/my-feedback/:courseId', () => {
     beforeEach(async () => {
       await request(app)
-        .post('/api/feedback')
+        .post('/api/v1/feedback')
         .set('Authorization', `Bearer ${authToken}`)
         .send({ courseId, rating: 4, review: 'Good course' });
     });
 
     it('should get current user feedback for a course', async () => {
       const response = await request(app)
-        .get(`/api/feedback/my-feedback/${courseId}`)
+        .get(`/api/v1/feedback/my-feedback/${courseId}`)
         .set('Authorization', `Bearer ${authToken}`)
         .expect(200);
 
@@ -208,7 +208,7 @@ describe('Feedback Module Integration Tests', () => {
       });
 
       const response = await request(app)
-        .get(`/api/feedback/my-feedback/${otherCourse.id}`)
+        .get(`/api/v1/feedback/my-feedback/${otherCourse.id}`)
         .set('Authorization', `Bearer ${authToken}`)
         .expect(404);
 
@@ -216,17 +216,17 @@ describe('Feedback Module Integration Tests', () => {
     });
   });
 
-  describe('PUT /api/feedback/:courseId', () => {
+  describe('PUT /api/v1/feedback/:courseId', () => {
     beforeEach(async () => {
       await request(app)
-        .post('/api/feedback')
+        .post('/api/v1/feedback')
         .set('Authorization', `Bearer ${authToken}`)
         .send({ courseId, rating: 3, review: 'Okay' });
     });
 
     it('should update existing feedback', async () => {
       const response = await request(app)
-        .put(`/api/feedback/${courseId}`)
+        .put(`/api/v1/feedback/${courseId}`)
         .set('Authorization', `Bearer ${authToken}`)
         .send({ rating: 4, review: 'Better than I thought' })
         .expect(200);
@@ -255,7 +255,7 @@ describe('Feedback Module Integration Tests', () => {
       });
 
       const response = await request(app)
-        .put(`/api/feedback/${otherCourse.id}`)
+        .put(`/api/v1/feedback/${otherCourse.id}`)
         .set('Authorization', `Bearer ${authToken}`)
         .send({ rating: 5 })
         .expect(404);
@@ -264,23 +264,23 @@ describe('Feedback Module Integration Tests', () => {
     });
   });
 
-  describe('DELETE /api/feedback/:courseId', () => {
+  describe('DELETE /api/v1/feedback/:courseId', () => {
     beforeEach(async () => {
       await request(app)
-        .post('/api/feedback')
+        .post('/api/v1/feedback')
         .set('Authorization', `Bearer ${authToken}`)
         .send({ courseId, rating: 5 });
     });
 
     it('should delete feedback', async () => {
       await request(app)
-        .delete(`/api/feedback/${courseId}`)
+        .delete(`/api/v1/feedback/${courseId}`)
         .set('Authorization', `Bearer ${authToken}`)
         .expect(204);
 
       // Verify deletion
       const response = await request(app)
-        .get(`/api/feedback/my-feedback/${courseId}`)
+        .get(`/api/v1/feedback/my-feedback/${courseId}`)
         .set('Authorization', `Bearer ${authToken}`)
         .expect(404);
 
@@ -289,7 +289,7 @@ describe('Feedback Module Integration Tests', () => {
 
     it('should return 404 if feedback does not exist', async () => {
       const response = await request(app)
-        .delete('/api/feedback/non-existent-course')
+        .delete('/api/v1/feedback/non-existent-course')
         .set('Authorization', `Bearer ${authToken}`)
         .expect(404);
 

@@ -25,11 +25,11 @@ export const STELLAR_NETWORK: string = process.env.STELLAR_NETWORK ?? 'testnet';
  * Override with the SOROBAN_RPC_URL environment variable.
  */
 export const SOROBAN_RPC_URL: string =
-  process.env.SOROBAN_RPC_URL ?? RPC_DEFAULTS[STELLAR_NETWORK] ?? RPC_DEFAULTS.testnet;
+  process.env.SOROBAN_RPC_URL ?? RPC_DEFAULTS[STELLAR_NETWORK] ?? RPC_DEFAULTS['testnet']!;
 
 /**
  * Horizon API URL for the active network.
  * Override with the HORIZON_URL environment variable.
  */
 export const HORIZON_URL: string =
-  process.env.HORIZON_URL ?? HORIZON_DEFAULTS[STELLAR_NETWORK] ?? HORIZON_DEFAULTS.testnet;
+  process.env.HORIZON_URL ?? HORIZON_DEFAULTS[STELLAR_NETWORK] ?? HORIZON_DEFAULTS['testnet']!;

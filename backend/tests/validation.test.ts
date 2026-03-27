@@ -9,7 +9,8 @@ const mockRequest = (body: Record<string, unknown>) =>
   }) as unknown as Request;
 
 const mockResponse = () => {
-  const res: Record<string, jest.Mock> = {};
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const res: any = {};
   res.status = jest.fn().mockReturnValue(res);
   res.json = jest.fn().mockReturnValue(res);
   return res;

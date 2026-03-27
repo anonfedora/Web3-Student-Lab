@@ -1,6 +1,6 @@
-import express, { Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import express, { Request, Response } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import prisma from './db/index.js';
 import { requestLogger } from './middleware/requestLogger.js';
@@ -46,7 +46,7 @@ app.get('/health', (_req: Request, res: Response) => {
 });
 
 // API Routes
-app.use('/api', routes);
+app.use('/api/v1', routes);
 
 // Start server only if not in test environment
 let server: ReturnType<typeof app.listen> | null = null;

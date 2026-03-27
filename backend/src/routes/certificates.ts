@@ -77,7 +77,7 @@ router.post('/', async (req, res) => {
       courseId,
       certificateHash: fakeHash,
       status: 'issued',
-      issuedAt: new Date().toISOString(),
+      issuedAt: new Date(),
       student: { id: studentId, name: 'Active Operator', email: 'operator@web3lab.local' },
       course: {
         id: courseId,
@@ -105,7 +105,7 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Certificate not found' });
     }
 
-    Object.assign(certificates[index], { status, certificateHash });
+    Object.assign(certificates[index]!, { status, certificateHash });
     res.json(certificates[index]);
   } catch {
     res.status(500).json({ error: 'Failed to update certificate' });

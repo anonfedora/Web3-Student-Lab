@@ -14,7 +14,7 @@ describe('Auth Module Integration Tests', () => {
     await prisma.$disconnect();
   });
 
-  describe('POST /api/auth/register', () => {
+  describe('POST /api/v1/auth/register', () => {
     it('should register a new student successfully', async () => {
       const newStudent = {
         email: 'test@example.com',
@@ -23,7 +23,7 @@ describe('Auth Module Integration Tests', () => {
         lastName: 'User',
       };
 
-      const response = await request(app).post('/api/auth/register').send(newStudent).expect(201);
+      const response = await request(app).post('/api/v1/auth/register').send(newStudent).expect(201);
 
       expect(response.body).toHaveProperty('user');
       expect(response.body.user).toHaveProperty('id');
@@ -41,7 +41,7 @@ describe('Auth Module Integration Tests', () => {
       };
 
       const response = await request(app)
-        .post('/api/auth/register')
+        .post('/api/v1/auth/register')
         .send(incompleteStudent)
         .expect(400);
 
@@ -56,7 +56,7 @@ describe('Auth Module Integration Tests', () => {
         lastName: 'User',
       };
 
-      const response = await request(app).post('/api/auth/register').send(newStudent).expect(400);
+      const response = await request(app).post('/api/v1/auth/register').send(newStudent).expect(400);
 
       expect(response.body).toHaveProperty('error');
     });
@@ -70,17 +70,21 @@ describe('Auth Module Integration Tests', () => {
       };
 
       // First registration
+      await request(app)
+        .post('/api/v1/auth/register')
+        .send(newStudent)
+        .expect(201);
       await request(app).post('/api/auth/register').send(newStudent).expect(201);
 
       // Second registration with same email
-      const response = await request(app).post('/api/auth/register').send(newStudent).expect(409);
+      const response = await request(app).post('/api/v1/auth/register').send(newStudent).expect(409);
 
       expect(response.body).toHaveProperty('error');
       expect(response.body.error).toBe('Student with this email already exists');
     });
   });
 
-  describe('POST /api/auth/login', () => {
+  describe('POST /api/v1/auth/login', () => {
     const testStudent = {
       email: 'login@example.com',
       password: 'password123',
@@ -90,12 +94,12 @@ describe('Auth Module Integration Tests', () => {
 
     beforeEach(async () => {
       // Register student before each login test
-      await request(app).post('/api/auth/register').send(testStudent);
+      await request(app).post('/api/v1/auth/register').send(testStudent);
     });
 
     it('should login successfully with valid credentials', async () => {
       const response = await request(app)
-        .post('/api/auth/login')
+        .post('/api/v1/auth/login')
         .send({
           email: testStudent.email,
           password: testStudent.password,
@@ -112,7 +116,7 @@ describe('Auth Module Integration Tests', () => {
 
     it('should return 400 if email or password is missing', async () => {
       const response = await request(app)
-        .post('/api/auth/login')
+        .post('/api/v1/auth/login')
         .send({ email: testStudent.email })
         .expect(400);
 
@@ -121,7 +125,7 @@ describe('Auth Module Integration Tests', () => {
 
     it('should return 401 for invalid password', async () => {
       const response = await request(app)
-        .post('/api/auth/login')
+        .post('/api/v1/auth/login')
         .send({
           email: testStudent.email,
           password: 'wrongpassword',
@@ -134,7 +138,7 @@ describe('Auth Module Integration Tests', () => {
 
     it('should return 401 for non-existent student', async () => {
       const response = await request(app)
-        .post('/api/auth/login')
+        .post('/api/v1/auth/login')
         .send({
           email: 'nonexistent@example.com',
           password: 'password123',
@@ -146,7 +150,7 @@ describe('Auth Module Integration Tests', () => {
     });
   });
 
-  describe('GET /api/auth/me', () => {
+  describe('GET /api/v1/auth/me', () => {
     let authToken: string;
     const testStudent = {
       email: 'me@example.com',
@@ -157,19 +161,19 @@ describe('Auth Module Integration Tests', () => {
 
     beforeEach(async () => {
       // Register and login to get a valid token
-      const registerResponse = await request(app).post('/api/auth/register').send(testStudent);
+      const registerResponse = await request(app).post('/api/v1/auth/register').send(testStudent);
       authToken = registerResponse.body.token;
     });
 
     it('should return 401 without authorization header', async () => {
-      const response = await request(app).get('/api/auth/me').expect(401);
+      const response = await request(app).get('/api/v1/auth/me').expect(401);
 
       expect(response.body).toHaveProperty('error');
     });
 
     it('should return 401 with invalid token format', async () => {
       const response = await request(app)
-        .get('/api/auth/me')
+        .get('/api/v1/auth/me')
         .set('Authorization', 'Bearer invalid-token')
         .expect(401);
 
@@ -178,7 +182,7 @@ describe('Auth Module Integration Tests', () => {
 
     it('should return student data with valid token', async () => {
       const response = await request(app)
-        .get('/api/auth/me')
+        .get('/api/v1/auth/me')
         .set('Authorization', `Bearer ${authToken}`)
         .expect(200);
 
