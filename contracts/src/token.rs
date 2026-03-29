@@ -8,6 +8,7 @@ enum DataKey {
     CertificateContract,
     Balance(Address, u32),
     MintPaused,
+    Owner,
 }
 
 #[contracterror]
@@ -17,6 +18,7 @@ pub enum TokenError {
     NotAuthorized = 2,
     InvalidAmount = 3,
     ContractPaused = 4,
+    InsufficientBalance = 5,
 }
 
 #[contract]
@@ -36,6 +38,9 @@ impl RsTokenContract {
         env.storage()
             .instance()
             .set(&DataKey::MintPaused, &false);
+        env.storage()
+            .instance()
+            .set(&DataKey::Owner, &certificate_contract);
     }
 
     fn require_mint_not_paused(env: &Env) {
@@ -130,6 +135,49 @@ impl RsTokenContract {
         }
 
         balances
+    }
+
+    /// Burns (destroys) RS-Tokens from a student's balance.
+    /// Only the contract owner or the student themselves may call this.
+    pub fn burn(env: Env, caller: Address, student: Address, token_id: u32, amount: i128) {
+        caller.require_auth();
+
+        if amount <= 0 {
+            panic_with_error!(&env, TokenError::InvalidAmount);
+        }
+
+        // Check authorization: only owner or the student themselves can burn
+        let owner: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Owner)
+            .unwrap();
+
+        if caller != owner && caller != student {
+            panic_with_error!(&env, TokenError::NotAuthorized);
+        }
+
+        let balance_key = DataKey::Balance(student.clone(), token_id);
+        let current_balance: i128 = env.storage().instance().get(&balance_key).unwrap_or(0);
+
+        if current_balance < amount {
+            panic_with_error!(&env, TokenError::InsufficientBalance);
+        }
+
+        let new_balance = current_balance - amount;
+
+        if new_balance == 0 {
+            // Remove the balance entry if it's zero to save storage
+            env.storage().instance().remove(&balance_key);
+        } else {
+            env.storage().instance().set(&balance_key, &new_balance);
+        }
+
+        // Emit the Burned event
+        env.events().publish(
+            ("Burned", "burner", "student", "token_id", "amount"),
+            (caller.clone(), student.clone(), token_id, amount),
+        );
     }
 }
 
@@ -239,5 +287,129 @@ mod tests {
         assert_eq!(balances.len(), 2);
         assert_eq!(balances.get(0).unwrap(), 10); // student1, token_id 1
         assert_eq!(balances.get(1).unwrap(), 40); // student2, token_id 2
+    }
+
+    #[test]
+    fn student_can_burn_own_tokens() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(RsTokenContract, ());
+        let client = RsTokenContractClient::new(&env, &contract_id);
+
+        let certificate_contract = Address::generate(&env);
+        let student = Address::generate(&env);
+
+        client.init(&certificate_contract);
+        client.mint(&certificate_contract, &student, &1, &100);
+
+        assert_eq!(client.get_balance(&student, &1), 100);
+
+        // Student burns 50 tokens
+        client.burn(&student, &student, &1, &50);
+
+        assert_eq!(client.get_balance(&student, &1), 50);
+    }
+
+    #[test]
+    fn owner_can_burn_student_tokens() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(RsTokenContract, ());
+        let client = RsTokenContractClient::new(&env, &contract_id);
+
+        let certificate_contract = Address::generate(&env);
+        let student = Address::generate(&env);
+
+        client.init(&certificate_contract);
+        client.mint(&certificate_contract, &student, &1, &100);
+
+        assert_eq!(client.get_balance(&student, &1), 100);
+
+        // Owner burns 30 tokens from student
+        client.burn(&certificate_contract, &student, &1, &30);
+
+        assert_eq!(client.get_balance(&student, &1), 70);
+    }
+
+    #[test]
+    #[should_panic]
+    fn unauthorized_cannot_burn_tokens() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(RsTokenContract, ());
+        let client = RsTokenContractClient::new(&env, &contract_id);
+
+        let certificate_contract = Address::generate(&env);
+        let student = Address::generate(&env);
+        let unauthorized = Address::generate(&env);
+
+        client.init(&certificate_contract);
+        client.mint(&certificate_contract, &student, &1, &100);
+
+        // Unauthorized user tries to burn tokens
+        client.burn(&unauthorized, &student, &1, &50);
+    }
+
+    #[test]
+    #[should_panic]
+    fn cannot_burn_more_than_balance() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(RsTokenContract, ());
+        let client = RsTokenContractClient::new(&env, &contract_id);
+
+        let certificate_contract = Address::generate(&env);
+        let student = Address::generate(&env);
+
+        client.init(&certificate_contract);
+        client.mint(&certificate_contract, &student, &1, &50);
+
+        // Try to burn more than available balance
+        client.burn(&student, &student, &1, &100);
+    }
+
+    #[test]
+    #[should_panic]
+    fn cannot_burn_zero_amount() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(RsTokenContract, ());
+        let client = RsTokenContractClient::new(&env, &contract_id);
+
+        let certificate_contract = Address::generate(&env);
+        let student = Address::generate(&env);
+
+        client.init(&certificate_contract);
+        client.mint(&certificate_contract, &student, &1, &100);
+
+        // Try to burn zero amount
+        client.burn(&student, &student, &1, &0);
+    }
+
+    #[test]
+    fn burning_all_tokens_removes_balance_entry() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(RsTokenContract, ());
+        let client = RsTokenContractClient::new(&env, &contract_id);
+
+        let certificate_contract = Address::generate(&env);
+        let student = Address::generate(&env);
+
+        client.init(&certificate_contract);
+        client.mint(&certificate_contract, &student, &1, &100);
+
+        assert_eq!(client.get_balance(&student, &1), 100);
+
+        // Burn all tokens
+        client.burn(&student, &student, &1, &100);
+
+        assert_eq!(client.get_balance(&student, &1), 0);
     }
 }
