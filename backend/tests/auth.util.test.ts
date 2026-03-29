@@ -224,12 +224,12 @@ describe('JWT Authentication Utility', () => {
     });
 
     it('should return null for null header', () => {
-      const token = extractTokenFromHeader(null as any);
+      const token = extractTokenFromHeader(null as unknown as string);
       expect(token).toBeNull();
     });
 
     it('should return null for non-string header', () => {
-      const token = extractTokenFromHeader(123 as any);
+      const token = extractTokenFromHeader(123 as unknown as string);
       expect(token).toBeNull();
     });
   });

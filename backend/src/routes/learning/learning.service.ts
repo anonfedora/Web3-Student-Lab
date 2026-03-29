@@ -1,17 +1,17 @@
 import prisma from '../../db/index.js';
-import { COURSES, curriculumByCourseId, getCurriculumForCourse } from './curriculum.data.js';
+import { COURSES, getCurriculumForCourse } from './curriculum.data.js';
 import {
-  CurriculumCourse,
-  Module,
-  Progress,
-  ProgressStatus,
-  ProgressUpdateInput,
+    CurriculumCourse,
+    Module,
+    Progress,
+    ProgressStatus,
+    ProgressUpdateInput,
 } from './types.js';
 
 // In-memory mock store for demo resilience
 const mockProgressStore: Record<string, Progress> = {};
 
-const toProgress = (progress: any): Progress => ({
+const toProgress = (progress: Progress): Progress => ({
   id: progress.id,
   studentId: progress.studentId,
   courseId: progress.courseId,
@@ -80,11 +80,11 @@ export const listCourses = async (difficulty?: string): Promise<CurriculumCourse
       orderBy: { createdAt: 'asc' },
     });
 
-    return courses.map((course: any) => ({
+    return courses.map((course: { id: string }) => ({
       ...course,
       modules: filterModulesByDifficulty(getCurriculumForCourse(course.id), difficulty),
     }));
-  } catch (error) {
+  } catch (_error) {
     console.warn('Database error in listCourses, falling back to mock data');
     const now = new Date();
     return COURSES.map((course) => ({
@@ -134,7 +134,7 @@ export const getCourseCurriculum = async (
       ...course,
       modules: filterModulesByDifficulty(getCurriculumForCourse(course.id), difficulty),
     };
-  } catch (error) {
+  } catch (_error) {
     console.warn('Database error in getCourseCurriculum, falling back to mock data');
     const mockCourse = COURSES.find((c) => c.id === courseId);
     if (!mockCourse) return null;
@@ -177,7 +177,7 @@ export const getStudentProgress = async (
       mockProgressStore[key] = p; // Sync cache
       return p;
     }
-  } catch (error) {
+  } catch (_error) {
     console.warn('Database error in getStudentProgress, using mock store');
   }
 
@@ -288,7 +288,7 @@ export const updateStudentProgress = async (
     });
 
     return toProgress(progress);
-  } catch (error) {
+  } catch (_error) {
     console.warn('Database error in updateStudentProgress, updated in mock store only');
     return updatedProgress;
   }

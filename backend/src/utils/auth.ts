@@ -74,7 +74,7 @@ export const generateToken = (payload: TokenPayload, options: TokenOptions = {})
   };
 
   const signOptions: SignOptions = {
-    expiresIn: defaultOptions.expiresIn as any,
+    expiresIn: defaultOptions.expiresIn as SignOptions['expiresIn'],
     issuer: defaultOptions.issuer,
     audience: defaultOptions.audience,
     ...options,
@@ -99,7 +99,7 @@ export const verifyToken = (token: string): TokenVerificationResult => {
       valid: true,
       payload: decoded,
     };
-  } catch (error) {
+  } catch (error: unknown) {
     if (error instanceof JsonWebTokenError) {
       if (error.name === 'TokenExpiredError') {
         return {
@@ -148,18 +148,20 @@ export const refreshToken = (userId: string, options: TokenOptions = {}): string
  * @param payload - Token payload to validate
  * @returns True if payload is valid
  */
-export const validateTokenPayload = (payload: any): boolean => {
+export const validateTokenPayload = (payload: unknown): boolean => {
   if (!payload || typeof payload !== 'object') {
     return false;
   }
 
-  if (!payload.userId || typeof payload.userId !== 'string') {
+  const p = payload as Record<string, unknown>;
+
+  if (!p.userId || typeof p.userId !== 'string') {
     return false;
   }
 
-  if (payload.exp && typeof payload.exp === 'number') {
+  if (p.exp && typeof p.exp === 'number') {
     const currentTime = Math.floor(Date.now() / 1000);
-    if (payload.exp < currentTime) {
+    if ((p.exp as number) < currentTime) {
       return false;
     }
   }
