@@ -144,7 +144,7 @@ fn verifies_event_emitted_per_student() {
     let mut cert_issued_count = 0u32;
     for (addr, topics, _) in all_events.iter() {
         if addr == client.address
-            && Symbol::from_val(&env, &topics.get(0).unwrap()) == Symbol::new(&env, "cert_issued")
+            && Symbol::from_val(&env, &topics.get(0).unwrap()) == Symbol::new(&env, "v1_cert_issued")
         {
             cert_issued_count += 1;
         }
@@ -225,7 +225,7 @@ fn revoke_emits_event() {
     assert_eq!(addr, client.address);
     assert_eq!(
         Symbol::from_val(&env, &topics.get(0).unwrap()),
-        Symbol::new(&env, "cert_revoked")
+        Symbol::new(&env, "v1_cert_revoked")
     );
     assert_eq!(
         Symbol::from_val(&env, &topics.get(1).unwrap()),
@@ -428,7 +428,7 @@ fn meta_tx_emits_event() {
     assert_eq!(addr, client.address);
     assert_eq!(
         Symbol::from_val(&env, &topics.get(0).unwrap()),
-        Symbol::new(&env, "meta_tx_issued")
+        Symbol::new(&env, "v1_meta_tx_issued")
     );
 }
 
@@ -592,7 +592,7 @@ fn mint_cap_update_emits_event() {
     for (addr, topics, _) in all_events.iter() {
         if addr == client.address
             && Symbol::from_val(&env, &topics.get(0).unwrap())
-                == Symbol::new(&env, "mint_cap_updated")
+                == Symbol::new(&env, "v1_mint_cap_updated")
         {
             found_event = true;
         }
@@ -621,7 +621,7 @@ fn issue_emits_mint_period_update_event() {
     for (addr, topics, _) in all_events.iter() {
         if addr == client.address
             && Symbol::from_val(&env, &topics.get(0).unwrap())
-                == Symbol::new(&env, "mint_period_update")
+                == Symbol::new(&env, "v1_mint_period_update")
         {
             found_event = true;
         }
@@ -862,4 +862,119 @@ fn batch_issue_gas_efficiency() {
         assert!(!cert.revoked);
         assert_eq!(cert.issue_date, env.ledger().timestamp());
     }
+}
+
+// ---------------------------------------------------------------------------
+// String validation (storage bloat prevention)
+// ---------------------------------------------------------------------------
+
+#[test]
+#[should_panic]
+fn issue_rejects_course_name_exceeding_max_length() {
+    let (env, instructor, _, _, client) = setup();
+    // 129 'a' characters — one over the 128-byte limit
+    let long_name = String::from_str(&env, &"a".repeat(129));
+    client.issue(
+        &instructor,
+        &symbol_short!("LONG"),
+        &vec![&env, Address::generate(&env)],
+        &long_name,
+    );
+}
+
+#[test]
+#[should_panic]
+fn issue_rejects_course_name_with_non_printable_chars() {
+    let (env, instructor, _, _, client) = setup();
+    // Embed a null byte (0x00) — non-printable
+    let bad_name = String::from_bytes(&env, &[b'H', b'i', 0x00]);
+    client.issue(
+        &instructor,
+        &symbol_short!("CTRL"),
+        &vec![&env, Address::generate(&env)],
+        &bad_name,
+    );
+}
+
+#[test]
+fn issue_accepts_course_name_at_max_length() {
+    let (env, instructor, _, _, client) = setup();
+    // Exactly 128 printable characters — should succeed
+    let max_name = String::from_str(&env, &"a".repeat(128));
+    let issued = client.issue(
+        &instructor,
+        &symbol_short!("MAXOK"),
+        &vec![&env, Address::generate(&env)],
+        &max_name,
+    );
+    assert_eq!(issued.len(), 1);
+}
+
+#[test]
+#[should_panic]
+fn batch_issue_rejects_course_name_exceeding_max_length() {
+    let (env, instructor, _, _, client) = setup();
+    let long_name = String::from_str(&env, &"b".repeat(129));
+    client.batch_issue(
+        &instructor,
+        &vec![&env, symbol_short!("BLG")],
+        &vec![&env, Address::generate(&env)],
+        &long_name,
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Reentrancy guard
+// ---------------------------------------------------------------------------
+
+#[test]
+fn lock_is_released_after_successful_issue() {
+    // If the lock were not released, a second call would panic with Reentrant.
+    let (env, instructor, _, _, client) = setup();
+    let course_symbol = symbol_short!("LOCK1");
+    let course_name = String::from_str(&env, "Lock Test");
+
+    client.issue(
+        &instructor,
+        &course_symbol,
+        &vec![&env, Address::generate(&env)],
+        &course_name,
+    );
+    // Second call must succeed — lock was released
+    client.issue(
+        &instructor,
+        &course_symbol,
+        &vec![&env, Address::generate(&env)],
+        &course_name,
+    );
+}
+
+#[test]
+fn lock_is_released_after_successful_batch_issue() {
+    let (env, instructor, _, _, client) = setup();
+    let course_name = String::from_str(&env, "Batch Lock Test");
+
+    client.batch_issue(
+        &instructor,
+        &vec![&env, symbol_short!("BLK1")],
+        &vec![&env, Address::generate(&env)],
+        &course_name,
+    );
+    // Must succeed — lock was released
+    client.batch_issue(
+        &instructor,
+        &vec![&env, symbol_short!("BLK2")],
+        &vec![&env, Address::generate(&env)],
+        &course_name,
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Versioned events
+// ---------------------------------------------------------------------------
+
+#[test]
+fn get_event_version_returns_one() {
+    let (_env, _a, _b, _c, client) = setup();
+    assert_eq!(client.get_event_version(), 1u32);
 }

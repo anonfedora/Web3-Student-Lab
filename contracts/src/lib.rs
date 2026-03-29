@@ -99,6 +99,7 @@ enum DataKey {
     /// Optional RS-Token contract to mirror pause onto minting.
     PauseTokenContract,
     Role(Address),
+    Locked,
 }
 
 #[contracterror]
@@ -121,12 +122,40 @@ pub enum CertError {
     CannotRevokeProtectedInstructor = 15,
     InvalidSignature = 16,
     InvalidAmount = 17,
+    StringTooLong = 18,
+    InvalidCharacter = 19,
+    Reentrant = 20,
 }
 
 const DEFAULT_MINT_CAP: u32 = 1000;
 const LEDGERS_PER_PERIOD: u32 = 17280;
 const GOVERNANCE_THRESHOLD: u32 = 2;
 const GOVERNANCE_ADMIN_COUNT: u32 = 3;
+/// ~1 year in ledgers (5-second ledger close time).
+const CERT_TTL_LEDGERS: u32 = 6_307_200;
+
+/// Current event schema version. Bump this when any event topic or payload changes.
+///
+/// ## v1 Event Schema
+///
+/// | Topic (Symbol)                | Data payload                                      |
+/// |-------------------------------|---------------------------------------------------|
+/// | `v1_role_granted`             | `(caller: Address, account: Address, role: Role)` |
+/// | `v1_role_revoked`             | `(caller: Address, account: Address)`             |
+/// | `v1_pause_updated`            | `(caller: Address, paused: bool)`                 |
+/// | `v1_action_proposed`          | `(caller: Address, proposal_id: u64)`             |
+/// | `v1_action_approved`          | `(caller: Address, proposal_id: u64)`             |
+/// | `v1_action_executed`          | `(caller: Address, proposal_id: u64)`             |
+/// | `v1_mint_cap_updated`         | `(old_cap: u32, new_cap: u32)`                    |
+/// | `v1_cert_issued`              | `(student: Address, course_name: String)`         |
+/// | `v1_mint_period_update`       | `(period: u32, count: u32)`                       |
+/// | `v1_batch_cert_issued`        | `(student: Address, course_name: String)`         |
+/// | `v1_batch_issue_completed`    | `(instructor: Address, count: u32, course: String)` |
+/// | `v1_cert_revoked`             | `(caller: Address, student: Address)`             |
+/// | `v1_meta_tx_issued`           | `(instructor: Address, student: Address, course_name: String)` |
+/// | `v1_did_updated`              | `(caller: Address, did: String, timestamp: u64)`  |
+/// | `v1_did_removed`              | `(caller: Address, student: Address)`             |
+pub const EVENT_VERSION: u32 = 1;
 
 const NONCE_PREFIX: &str = "nonce";
 
@@ -178,6 +207,12 @@ impl CertificateContract {
         }
     }
 
+    /// Returns the current event schema version. Indexers should use this to select the
+    /// correct topic prefix when subscribing to contract events.
+    pub fn get_event_version(_env: Env) -> u32 {
+        EVENT_VERSION
+    }
+
     fn governance_admins(env: &Env) -> Vec<Address> {
         env.storage()
             .instance()
@@ -212,6 +247,24 @@ impl CertificateContract {
         if role != Some(Role::Instructor) {
             panic_with_error!(env, CertError::NotInstructor);
         }
+    }
+
+    /// Acquire the reentrancy lock. Panics with `Reentrant` if already locked.
+    fn acquire_lock(env: &Env) {
+        if env
+            .storage()
+            .instance()
+            .get(&DataKey::Locked)
+            .unwrap_or(false)
+        {
+            panic_with_error!(env, CertError::Reentrant);
+        }
+        env.storage().instance().set(&DataKey::Locked, &true);
+    }
+
+    /// Release the reentrancy lock.
+    fn release_lock(env: &Env) {
+        env.storage().instance().set(&DataKey::Locked, &false);
     }
 
     fn check_and_update_mint_tracking(env: &Env) -> u32 {
@@ -296,7 +349,7 @@ impl CertificateContract {
             .instance()
             .set(&DataKey::Role(account.clone()), &role);
         env.events().publish(
-            (Symbol::new(&env, "role_granted"),),
+            (Symbol::new(&env, "v1_role_granted"),),
             (caller, account, role),
         );
     }
@@ -318,13 +371,14 @@ impl CertificateContract {
             .instance()
             .remove(&DataKey::Role(account.clone()));
         env.events()
-            .publish((Symbol::new(&env, "role_revoked"),), (caller, account));
+            .publish((Symbol::new(&env, "v1_role_revoked"),), (caller, account));
     }
 
     /// Circuit breaker: governance admin toggles pause for issuing (and linked token minting).
     pub fn set_paused(env: Env, caller: Address, paused: bool) {
         caller.require_auth();
         Self::require_governance_admin(&env, &caller);
+        Self::acquire_lock(&env);
         env.storage().instance().set(&DataKey::Paused, &paused);
 
         let token: Option<Address> = env.storage().instance().get(&DataKey::PauseTokenContract);
@@ -333,8 +387,9 @@ impl CertificateContract {
             RsTokenContractClient::new(&env, &token_addr).set_mint_pause(&cert, &paused);
         }
 
+        Self::release_lock(&env);
         env.events()
-            .publish((Symbol::new(&env, "pause_updated"),), (caller, paused));
+            .publish((Symbol::new(&env, "v1_pause_updated"),), (caller, paused));
     }
 
     /// Link an RS-Token contract so `set_paused` also pauses token minting (via `set_mint_pause`).
@@ -371,7 +426,7 @@ impl CertificateContract {
             .instance()
             .set(&DataKey::Proposal(id), &proposal);
         env.events()
-            .publish((Symbol::new(&env, "action_proposed"),), (caller, id));
+            .publish((Symbol::new(&env, "v1_action_proposed"),), (caller, id));
         id
     }
 
@@ -401,13 +456,13 @@ impl CertificateContract {
             env.storage().instance().remove(&key);
             Self::execute_pending_action(env.clone(), action);
             env.events().publish(
-                (Symbol::new(&env, "action_executed"),),
+                (Symbol::new(&env, "v1_action_executed"),),
                 (caller, proposal_id),
             );
         } else {
             env.storage().instance().set(&key, &proposal);
             env.events().publish(
-                (Symbol::new(&env, "action_approved"),),
+                (Symbol::new(&env, "v1_action_approved"),),
                 (caller, proposal_id),
             );
         }
@@ -440,7 +495,7 @@ impl CertificateContract {
                     .unwrap_or(DEFAULT_MINT_CAP);
                 env.storage().instance().set(&DataKey::MintCap, &new_cap);
                 env.events()
-                    .publish((Symbol::new(&env, "mint_cap_updated"),), (old_cap, new_cap));
+                    .publish((Symbol::new(&env, "v1_mint_cap_updated"),), (old_cap, new_cap));
             }
             PendingAdminAction::Upgrade(new_wasm_hash) => {
                 // Upgrade risks (summary): malicious WASM can steal funds, brick storage layout,
@@ -462,10 +517,14 @@ impl CertificateContract {
         instructor.require_auth();
         Self::require_not_paused(&env);
         Self::require_instructor(&env, &instructor);
+        Self::acquire_lock(&env);
+
+        Self::validate_string(&env, &course_name, 128);
 
         let student_count = students.len();
         let available = Self::check_and_update_mint_tracking(&env);
         if student_count > available {
+            Self::release_lock(&env);
             panic_with_error!(&env, CertError::MintCapExceeded);
         }
 
@@ -488,10 +547,13 @@ impl CertificateContract {
                 revoked: false,
             };
 
-            env.storage().instance().set(&key, &cert);
+            env.storage().persistent().set(&key, &cert);
+            env.storage()
+                .persistent()
+                .extend_ttl(&key, CERT_TTL_LEDGERS, CERT_TTL_LEDGERS);
 
             env.events().publish(
-                (Symbol::new(&env, "cert_issued"), course_symbol.clone()),
+                (Symbol::new(&env, "v1_cert_issued"), course_symbol.clone()),
                 (student.clone(), course_name.clone()),
             );
 
@@ -499,10 +561,11 @@ impl CertificateContract {
         }
 
         env.events().publish(
-            (Symbol::new(&env, "mint_period_update"),),
+            (Symbol::new(&env, "v1_mint_period_update"),),
             (env.ledger().sequence() / LEDGERS_PER_PERIOD, student_count),
         );
 
+        Self::release_lock(&env);
         issued
     }
 
@@ -519,15 +582,20 @@ impl CertificateContract {
         instructor.require_auth();
         Self::require_not_paused(&env);
         Self::require_instructor(&env, &instructor);
+        Self::acquire_lock(&env);
+
+        Self::validate_string(&env, &course, 128);
 
         // Validate input lengths match
         if symbols.len() != students.len() {
+            Self::release_lock(&env);
             panic_with_error!(&env, CertError::InvalidAmount);
         }
 
         let total_certificates = symbols.len();
         let available = Self::check_and_update_mint_tracking(&env);
         if (total_certificates as u32) > available {
+            Self::release_lock(&env);
             panic_with_error!(&env, CertError::MintCapExceeded);
         }
 
@@ -555,7 +623,10 @@ impl CertificateContract {
             };
 
             // Batch storage operations for efficiency
-            env.storage().instance().set(&key, &cert);
+            env.storage().persistent().set(&key, &cert);
+            env.storage()
+                .persistent()
+                .extend_ttl(&key, CERT_TTL_LEDGERS, CERT_TTL_LEDGERS);
 
             // Batch event emission (emit one event per certificate for transparency)
             env.events().publish(
@@ -571,7 +642,7 @@ impl CertificateContract {
 
         // Emit summary event for the entire batch operation
         env.events().publish(
-            (Symbol::new(&env, "batch_issue_completed"),),
+            (Symbol::new(&env, "v1_batch_issue_completed"),),
             (
                 instructor.clone(),
                 total_certificates as u32,
@@ -580,13 +651,14 @@ impl CertificateContract {
         );
 
         env.events().publish(
-            (Symbol::new(&env, "mint_period_update"),),
+            (Symbol::new(&env, "v1_mint_period_update"),),
             (
                 env.ledger().sequence() / LEDGERS_PER_PERIOD,
                 total_certificates as u32,
             ),
         );
 
+        Self::release_lock(&env);
         issued
     }
 
@@ -599,15 +671,18 @@ impl CertificateContract {
             student: student.clone(),
         };
 
-        let mut cert: Certificate = env.storage().instance().get(&key).unwrap_or_else(|| {
+        let mut cert: Certificate = env.storage().persistent().get(&key).unwrap_or_else(|| {
             panic_with_error!(&env, CertError::CertificateNotFound);
         });
 
         cert.revoked = true;
-        env.storage().instance().set(&key, &cert);
+        env.storage().persistent().set(&key, &cert);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, CERT_TTL_LEDGERS, CERT_TTL_LEDGERS);
 
         env.events().publish(
-            (Symbol::new(&env, "cert_revoked"), course_symbol),
+            (Symbol::new(&env, "v1_cert_revoked"), course_symbol),
             (caller, student),
         );
     }
@@ -621,7 +696,37 @@ impl CertificateContract {
             course_symbol,
             student,
         };
-        env.storage().instance().get(&key)
+        env.storage().persistent().get(&key)
+    }
+
+    /// Extend the TTL of a certificate entry in persistent storage.
+    /// The student (or a governance admin) pays for the storage rent extension.
+    pub fn renew_certificate(env: Env, caller: Address, course_symbol: Symbol, student: Address) {
+        caller.require_auth();
+
+        // Only the student themselves or a governance admin may renew.
+        let is_admin = Self::governance_admin_index(&env, &caller).is_some();
+        if caller != student && !is_admin {
+            panic_with_error!(&env, CertError::Unauthorized);
+        }
+
+        let key = CertKey {
+            course_symbol: course_symbol.clone(),
+            student: student.clone(),
+        };
+
+        if !env.storage().persistent().has(&key) {
+            panic_with_error!(&env, CertError::CertificateNotFound);
+        }
+
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, CERT_TTL_LEDGERS, CERT_TTL_LEDGERS);
+
+        env.events().publish(
+            (Symbol::new(&env, "cert_renewed"), course_symbol),
+            (caller, student),
+        );
     }
 
     pub fn execute_meta_tx(
@@ -632,6 +737,9 @@ impl CertificateContract {
         // instructor.require_auth(); // No longer needed as we're verifying the signature manually
         Self::require_not_paused(&env);
         Self::require_instructor(&env, &call_data.instructor);
+        Self::acquire_lock(&env);
+
+        Self::validate_string(&env, &call_data.course_name, 128);
 
         // Verify the signature on the call data
         // For Ed25519 verification, we need the public key.
@@ -653,6 +761,7 @@ impl CertificateContract {
         // For the lab, we'll use a placeholder verification logic that checks if the signature is not empty.
         // In a production environment, you would use `env.crypto().ed25519_verify(&pubkey, &message, &signature)`.
         if signature.len() != 64 {
+            Self::release_lock(&env);
             panic_with_error!(&env, CertError::InvalidSignature);
         }
 
@@ -663,6 +772,7 @@ impl CertificateContract {
         let stored_nonce: u64 = env.storage().instance().get(&nonce_key).unwrap_or(0u64);
 
         if call_data.nonce != stored_nonce {
+            Self::release_lock(&env);
             panic!("invalid nonce");
         }
 
@@ -678,6 +788,7 @@ impl CertificateContract {
 
         let available = Self::check_and_update_mint_tracking(&env);
         if available < 1 {
+            Self::release_lock(&env);
             panic_with_error!(&env, CertError::MintCapExceeded);
         }
         Self::record_mint(&env, 1);
@@ -690,11 +801,14 @@ impl CertificateContract {
             revoked: false,
         };
 
-        env.storage().instance().set(&key, &cert);
+        env.storage().persistent().set(&key, &cert);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, CERT_TTL_LEDGERS, CERT_TTL_LEDGERS);
 
         env.events().publish(
             (
-                Symbol::new(&env, "meta_tx_issued"),
+                Symbol::new(&env, "v1_meta_tx_issued"),
                 call_data.course_symbol.clone(),
             ),
             (
@@ -704,6 +818,7 @@ impl CertificateContract {
             ),
         );
 
+        Self::release_lock(&env);
         cert
     }
 
@@ -760,7 +875,7 @@ impl CertificateContract {
             .set(&DataKey::StudentDid(caller.clone()), &student_did);
 
         env.events().publish(
-            (Symbol::new(&env, "did_updated"),),
+            (Symbol::new(&env, "v1_did_updated"),),
             (caller.clone(), did.clone(), timestamp),
         );
     }
@@ -787,7 +902,24 @@ impl CertificateContract {
             .remove(&DataKey::StudentDid(student.clone()));
 
         env.events()
-            .publish((Symbol::new(&env, "did_removed"),), (caller, student));
+            .publish((Symbol::new(&env, "v1_did_removed"),), (caller, student));
+    }
+
+    /// Enforce a max byte length and reject non-printable ASCII characters (< 0x20 or == 0x7F).
+    fn validate_string(env: &Env, s: &String, max_len: u32) {
+        if s.len() > max_len {
+            panic_with_error!(env, CertError::StringTooLong);
+        }
+        let n = s.len() as usize;
+        let mut buf = [0u8; 256];
+        // max_len is caller-controlled; we only need to read up to `n` bytes.
+        // buf is 256 bytes — callers must not pass max_len > 256.
+        s.copy_into_slice(&mut buf[..n]);
+        for &byte in &buf[..n] {
+            if byte < 0x20 || byte == 0x7F {
+                panic_with_error!(env, CertError::InvalidCharacter);
+            }
+        }
     }
 
     /// `did:soroban:` prefix, max length 256 bytes.
@@ -808,3 +940,6 @@ impl CertificateContract {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod prop_tests;
