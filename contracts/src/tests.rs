@@ -142,7 +142,7 @@ fn verifies_event_emitted_per_student() {
     let mut cert_issued_count = 0u32;
     for (addr, topics, _) in all_events.iter() {
         if addr == client.address
-            && Symbol::from_val(&env, &topics.get(0).unwrap()) == Symbol::new(&env, "cert_issued")
+            && Symbol::from_val(&env, &topics.get(0).unwrap()) == Symbol::new(&env, "v1_cert_issued")
         {
             cert_issued_count += 1;
         }
@@ -223,7 +223,7 @@ fn revoke_emits_event() {
     assert_eq!(addr, client.address);
     assert_eq!(
         Symbol::from_val(&env, &topics.get(0).unwrap()),
-        Symbol::new(&env, "cert_revoked")
+        Symbol::new(&env, "v1_cert_revoked")
     );
     assert_eq!(
         Symbol::from_val(&env, &topics.get(1).unwrap()),
@@ -358,7 +358,7 @@ fn meta_tx_emits_event() {
     assert_eq!(addr, client.address);
     assert_eq!(
         Symbol::from_val(&env, &topics.get(0).unwrap()),
-        Symbol::new(&env, "meta_tx_issued")
+        Symbol::new(&env, "v1_meta_tx_issued")
     );
 }
 
@@ -522,7 +522,7 @@ fn mint_cap_update_emits_event() {
     for (addr, topics, _) in all_events.iter() {
         if addr == client.address
             && Symbol::from_val(&env, &topics.get(0).unwrap())
-                == Symbol::new(&env, "mint_cap_updated")
+                == Symbol::new(&env, "v1_mint_cap_updated")
         {
             found_event = true;
         }
@@ -551,7 +551,7 @@ fn issue_emits_mint_period_update_event() {
     for (addr, topics, _) in all_events.iter() {
         if addr == client.address
             && Symbol::from_val(&env, &topics.get(0).unwrap())
-                == Symbol::new(&env, "mint_period_update")
+                == Symbol::new(&env, "v1_mint_period_update")
         {
             found_event = true;
         }
@@ -899,4 +899,14 @@ fn lock_is_released_after_successful_batch_issue() {
         &vec![&env, Address::generate(&env)],
         &course_name,
     );
+}
+
+// ---------------------------------------------------------------------------
+// Versioned events
+// ---------------------------------------------------------------------------
+
+#[test]
+fn get_event_version_returns_one() {
+    let (_env, _a, _b, _c, client) = setup();
+    assert_eq!(client.get_event_version(), 1u32);
 }

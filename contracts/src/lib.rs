@@ -131,6 +131,29 @@ const LEDGERS_PER_PERIOD: u32 = 17280;
 const GOVERNANCE_THRESHOLD: u32 = 2;
 const GOVERNANCE_ADMIN_COUNT: u32 = 3;
 
+/// Current event schema version. Bump this when any event topic or payload changes.
+///
+/// ## v1 Event Schema
+///
+/// | Topic (Symbol)                | Data payload                                      |
+/// |-------------------------------|---------------------------------------------------|
+/// | `v1_role_granted`             | `(caller: Address, account: Address, role: Role)` |
+/// | `v1_role_revoked`             | `(caller: Address, account: Address)`             |
+/// | `v1_pause_updated`            | `(caller: Address, paused: bool)`                 |
+/// | `v1_action_proposed`          | `(caller: Address, proposal_id: u64)`             |
+/// | `v1_action_approved`          | `(caller: Address, proposal_id: u64)`             |
+/// | `v1_action_executed`          | `(caller: Address, proposal_id: u64)`             |
+/// | `v1_mint_cap_updated`         | `(old_cap: u32, new_cap: u32)`                    |
+/// | `v1_cert_issued`              | `(student: Address, course_name: String)`         |
+/// | `v1_mint_period_update`       | `(period: u32, count: u32)`                       |
+/// | `v1_batch_cert_issued`        | `(student: Address, course_name: String)`         |
+/// | `v1_batch_issue_completed`    | `(instructor: Address, count: u32, course: String)` |
+/// | `v1_cert_revoked`             | `(caller: Address, student: Address)`             |
+/// | `v1_meta_tx_issued`           | `(instructor: Address, student: Address, course_name: String)` |
+/// | `v1_did_updated`              | `(caller: Address, did: String, timestamp: u64)`  |
+/// | `v1_did_removed`              | `(caller: Address, student: Address)`             |
+pub const EVENT_VERSION: u32 = 1;
+
 const NONCE_PREFIX: &str = "nonce";
 
 #[contract]
@@ -179,6 +202,12 @@ impl CertificateContract {
                 .instance()
                 .set(&DataKey::Role(admin.clone()), &Role::Instructor);
         }
+    }
+
+    /// Returns the current event schema version. Indexers should use this to select the
+    /// correct topic prefix when subscribing to contract events.
+    pub fn get_event_version(_env: Env) -> u32 {
+        EVENT_VERSION
     }
 
     fn governance_admins(env: &Env) -> Vec<Address> {
@@ -317,7 +346,7 @@ impl CertificateContract {
             .instance()
             .set(&DataKey::Role(account.clone()), &role);
         env.events().publish(
-            (Symbol::new(&env, "role_granted"),),
+            (Symbol::new(&env, "v1_role_granted"),),
             (caller, account, role),
         );
     }
@@ -339,7 +368,7 @@ impl CertificateContract {
             .instance()
             .remove(&DataKey::Role(account.clone()));
         env.events()
-            .publish((Symbol::new(&env, "role_revoked"),), (caller, account));
+            .publish((Symbol::new(&env, "v1_role_revoked"),), (caller, account));
     }
 
     /// Circuit breaker: governance admin toggles pause for issuing (and linked token minting).
@@ -357,7 +386,7 @@ impl CertificateContract {
 
         Self::release_lock(&env);
         env.events()
-            .publish((Symbol::new(&env, "pause_updated"),), (caller, paused));
+            .publish((Symbol::new(&env, "v1_pause_updated"),), (caller, paused));
     }
 
     /// Link an RS-Token contract so `set_paused` also pauses token minting (via `set_mint_pause`).
@@ -394,7 +423,7 @@ impl CertificateContract {
             .instance()
             .set(&DataKey::Proposal(id), &proposal);
         env.events()
-            .publish((Symbol::new(&env, "action_proposed"),), (caller, id));
+            .publish((Symbol::new(&env, "v1_action_proposed"),), (caller, id));
         id
     }
 
@@ -424,13 +453,13 @@ impl CertificateContract {
             env.storage().instance().remove(&key);
             Self::execute_pending_action(env.clone(), action);
             env.events().publish(
-                (Symbol::new(&env, "action_executed"),),
+                (Symbol::new(&env, "v1_action_executed"),),
                 (caller, proposal_id),
             );
         } else {
             env.storage().instance().set(&key, &proposal);
             env.events().publish(
-                (Symbol::new(&env, "action_approved"),),
+                (Symbol::new(&env, "v1_action_approved"),),
                 (caller, proposal_id),
             );
         }
@@ -463,7 +492,7 @@ impl CertificateContract {
                     .unwrap_or(DEFAULT_MINT_CAP);
                 env.storage().instance().set(&DataKey::MintCap, &new_cap);
                 env.events()
-                    .publish((Symbol::new(&env, "mint_cap_updated"),), (old_cap, new_cap));
+                    .publish((Symbol::new(&env, "v1_mint_cap_updated"),), (old_cap, new_cap));
             }
             PendingAdminAction::Upgrade(new_wasm_hash) => {
                 // Upgrade risks (summary): malicious WASM can steal funds, brick storage layout,
@@ -518,7 +547,7 @@ impl CertificateContract {
             env.storage().instance().set(&key, &cert);
 
             env.events().publish(
-                (Symbol::new(&env, "cert_issued"), course_symbol.clone()),
+                (Symbol::new(&env, "v1_cert_issued"), course_symbol.clone()),
                 (student.clone(), course_name.clone()),
             );
 
@@ -526,7 +555,7 @@ impl CertificateContract {
         }
 
         env.events().publish(
-            (Symbol::new(&env, "mint_period_update"),),
+            (Symbol::new(&env, "v1_mint_period_update"),),
             (env.ledger().sequence() / LEDGERS_PER_PERIOD, student_count),
         );
 
@@ -592,7 +621,7 @@ impl CertificateContract {
 
             // Batch event emission (emit one event per certificate for transparency)
             env.events().publish(
-                (Symbol::new(&env, "batch_cert_issued"), course_symbol.clone()),
+                (Symbol::new(&env, "v1_batch_cert_issued"), course_symbol.clone()),
                 (student.clone(), course.clone()),
             );
 
@@ -601,7 +630,7 @@ impl CertificateContract {
 
         // Emit summary event for the entire batch operation
         env.events().publish(
-            (Symbol::new(&env, "batch_issue_completed"),),
+            (Symbol::new(&env, "v1_batch_issue_completed"),),
             (
                 instructor.clone(),
                 total_certificates as u32,
@@ -610,7 +639,7 @@ impl CertificateContract {
         );
 
         env.events().publish(
-            (Symbol::new(&env, "mint_period_update"),),
+            (Symbol::new(&env, "v1_mint_period_update"),),
             (
                 env.ledger().sequence() / LEDGERS_PER_PERIOD,
                 total_certificates as u32,
@@ -638,7 +667,7 @@ impl CertificateContract {
         env.storage().instance().set(&key, &cert);
 
         env.events().publish(
-            (Symbol::new(&env, "cert_revoked"), course_symbol),
+            (Symbol::new(&env, "v1_cert_revoked"), course_symbol),
             (caller, student),
         );
     }
@@ -731,7 +760,7 @@ impl CertificateContract {
 
         env.events().publish(
             (
-                Symbol::new(&env, "meta_tx_issued"),
+                Symbol::new(&env, "v1_meta_tx_issued"),
                 call_data.course_symbol.clone(),
             ),
             (
@@ -798,7 +827,7 @@ impl CertificateContract {
             .set(&DataKey::StudentDid(caller.clone()), &student_did);
 
         env.events().publish(
-            (Symbol::new(&env, "did_updated"),),
+            (Symbol::new(&env, "v1_did_updated"),),
             (caller.clone(), did.clone(), timestamp),
         );
     }
@@ -825,7 +854,7 @@ impl CertificateContract {
             .remove(&DataKey::StudentDid(student.clone()));
 
         env.events()
-            .publish((Symbol::new(&env, "did_removed"),), (caller, student));
+            .publish((Symbol::new(&env, "v1_did_removed"),), (caller, student));
     }
 
     /// Enforce a max byte length and reject non-printable ASCII characters (< 0x20 or == 0x7F).
