@@ -19,6 +19,8 @@ pub enum StakingKey {
     Vote(Address, u32),
     /// Whether a proposal is currently active.
     ProposalActive(u32),
+    /// List of all currently-active proposal IDs (used to gate withdrawals).
+    ActiveProposals,
 }
 
 // ---------------------------------------------------------------------------
@@ -58,12 +60,27 @@ impl StakingContract {
     }
 
     /// Withdraw `amount` RS-Tokens for `staker`.
-    /// Panics if the staker has any active vote outstanding.
+    /// Panics if the staker has any active vote outstanding (checked via `ActiveProposals` list).
     pub fn withdraw_tokens(env: Env, staker: Address, amount: i128) {
         staker.require_auth();
 
         if amount <= 0 {
             panic_with_error!(&env, StakingError::InvalidAmount);
+        }
+
+        // Block withdrawal if the staker has voted on any currently-active proposal.
+        let active_proposals: soroban_sdk::Vec<u32> = env
+            .storage()
+            .instance()
+            .get(&StakingKey::ActiveProposals)
+            .unwrap_or_else(|| soroban_sdk::Vec::new(&env));
+
+        for proposal_id in active_proposals.iter() {
+            let vote_key = StakingKey::Vote(staker.clone(), proposal_id);
+            let voted: i128 = env.storage().instance().get(&vote_key).unwrap_or(0);
+            if voted > 0 {
+                panic_with_error!(&env, StakingError::VoteActive);
+            }
         }
 
         let stake_key = StakingKey::Stake(staker.clone());
@@ -110,6 +127,19 @@ impl StakingContract {
         env.storage()
             .instance()
             .set(&StakingKey::ProposalActive(proposal_id), &true);
+
+        // Track in the active proposals list so withdraw_tokens can check it.
+        let mut active: soroban_sdk::Vec<u32> = env
+            .storage()
+            .instance()
+            .get(&StakingKey::ActiveProposals)
+            .unwrap_or_else(|| soroban_sdk::Vec::new(&env));
+        if !active.contains(proposal_id) {
+            active.push_back(proposal_id);
+            env.storage()
+                .instance()
+                .set(&StakingKey::ActiveProposals, &active);
+        }
     }
 
     /// Close a proposal, allowing stakers to withdraw again.
@@ -118,6 +148,22 @@ impl StakingContract {
         env.storage()
             .instance()
             .set(&StakingKey::ProposalActive(proposal_id), &false);
+
+        // Remove from the active proposals list.
+        let active: soroban_sdk::Vec<u32> = env
+            .storage()
+            .instance()
+            .get(&StakingKey::ActiveProposals)
+            .unwrap_or_else(|| soroban_sdk::Vec::new(&env));
+        let mut updated: soroban_sdk::Vec<u32> = soroban_sdk::Vec::new(&env);
+        for id in active.iter() {
+            if id != proposal_id {
+                updated.push_back(id);
+            }
+        }
+        env.storage()
+            .instance()
+            .set(&StakingKey::ActiveProposals, &updated);
     }
 
     pub fn get_stake(env: Env, staker: Address) -> i128 {
@@ -177,6 +223,31 @@ mod tests {
         let staker = Address::generate(&env);
         client.stake_tokens(&staker, &50);
         client.withdraw_tokens(&staker, &100);
+    }
+
+    #[test]
+    #[should_panic]
+    fn cannot_withdraw_while_vote_active() {
+        let (env, admin, client) = setup();
+        let staker = Address::generate(&env);
+        client.stake_tokens(&staker, &100);
+        client.open_proposal(&admin, &5);
+        client.cast_vote(&staker, &5, &50);
+        // Should panic: staker has an active vote on proposal 5
+        client.withdraw_tokens(&staker, &10);
+    }
+
+    #[test]
+    fn can_withdraw_after_proposal_closed() {
+        let (env, admin, client) = setup();
+        let staker = Address::generate(&env);
+        client.stake_tokens(&staker, &100);
+        client.open_proposal(&admin, &6);
+        client.cast_vote(&staker, &6, &50);
+        client.close_proposal(&admin, &6);
+        // Proposal closed — withdrawal should succeed
+        client.withdraw_tokens(&staker, &10);
+        assert_eq!(client.get_stake(&staker), 90);
     }
 
     #[test]

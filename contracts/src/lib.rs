@@ -126,6 +126,8 @@ const DEFAULT_MINT_CAP: u32 = 1000;
 const LEDGERS_PER_PERIOD: u32 = 17280;
 const GOVERNANCE_THRESHOLD: u32 = 2;
 const GOVERNANCE_ADMIN_COUNT: u32 = 3;
+/// ~1 year in ledgers (5-second ledger close time).
+const CERT_TTL_LEDGERS: u32 = 6_307_200;
 
 const NONCE_PREFIX: &str = "nonce";
 
@@ -487,7 +489,10 @@ impl CertificateContract {
                 revoked: false,
             };
 
-            env.storage().instance().set(&key, &cert);
+            env.storage().persistent().set(&key, &cert);
+            env.storage()
+                .persistent()
+                .extend_ttl(&key, CERT_TTL_LEDGERS, CERT_TTL_LEDGERS);
 
             env.events().publish(
                 (Symbol::new(&env, "cert_issued"), course_symbol.clone()),
@@ -554,7 +559,10 @@ impl CertificateContract {
             };
 
             // Batch storage operations for efficiency
-            env.storage().instance().set(&key, &cert);
+            env.storage().persistent().set(&key, &cert);
+            env.storage()
+                .persistent()
+                .extend_ttl(&key, CERT_TTL_LEDGERS, CERT_TTL_LEDGERS);
 
             // Batch event emission (emit one event per certificate for transparency)
             env.events().publish(
@@ -595,12 +603,15 @@ impl CertificateContract {
             student: student.clone(),
         };
 
-        let mut cert: Certificate = env.storage().instance().get(&key).unwrap_or_else(|| {
+        let mut cert: Certificate = env.storage().persistent().get(&key).unwrap_or_else(|| {
             panic_with_error!(&env, CertError::CertificateNotFound);
         });
 
         cert.revoked = true;
-        env.storage().instance().set(&key, &cert);
+        env.storage().persistent().set(&key, &cert);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, CERT_TTL_LEDGERS, CERT_TTL_LEDGERS);
 
         env.events().publish(
             (Symbol::new(&env, "cert_revoked"), course_symbol),
@@ -617,7 +628,37 @@ impl CertificateContract {
             course_symbol,
             student,
         };
-        env.storage().instance().get(&key)
+        env.storage().persistent().get(&key)
+    }
+
+    /// Extend the TTL of a certificate entry in persistent storage.
+    /// The student (or a governance admin) pays for the storage rent extension.
+    pub fn renew_certificate(env: Env, caller: Address, course_symbol: Symbol, student: Address) {
+        caller.require_auth();
+
+        // Only the student themselves or a governance admin may renew.
+        let is_admin = Self::governance_admin_index(&env, &caller).is_some();
+        if caller != student && !is_admin {
+            panic_with_error!(&env, CertError::Unauthorized);
+        }
+
+        let key = CertKey {
+            course_symbol: course_symbol.clone(),
+            student: student.clone(),
+        };
+
+        if !env.storage().persistent().has(&key) {
+            panic_with_error!(&env, CertError::CertificateNotFound);
+        }
+
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, CERT_TTL_LEDGERS, CERT_TTL_LEDGERS);
+
+        env.events().publish(
+            (Symbol::new(&env, "cert_renewed"), course_symbol),
+            (caller, student),
+        );
     }
 
     pub fn execute_meta_tx(
@@ -686,7 +727,10 @@ impl CertificateContract {
             revoked: false,
         };
 
-        env.storage().instance().set(&key, &cert);
+        env.storage().persistent().set(&key, &cert);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, CERT_TTL_LEDGERS, CERT_TTL_LEDGERS);
 
         env.events().publish(
             (
