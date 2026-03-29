@@ -854,3 +854,49 @@ fn batch_issue_rejects_course_name_exceeding_max_length() {
         &long_name,
     );
 }
+
+// ---------------------------------------------------------------------------
+// Reentrancy guard
+// ---------------------------------------------------------------------------
+
+#[test]
+fn lock_is_released_after_successful_issue() {
+    // If the lock were not released, a second call would panic with Reentrant.
+    let (env, instructor, _, _, client) = setup();
+    let course_symbol = symbol_short!("LOCK1");
+    let course_name = String::from_str(&env, "Lock Test");
+
+    client.issue(
+        &instructor,
+        &course_symbol,
+        &vec![&env, Address::generate(&env)],
+        &course_name,
+    );
+    // Second call must succeed — lock was released
+    client.issue(
+        &instructor,
+        &course_symbol,
+        &vec![&env, Address::generate(&env)],
+        &course_name,
+    );
+}
+
+#[test]
+fn lock_is_released_after_successful_batch_issue() {
+    let (env, instructor, _, _, client) = setup();
+    let course_name = String::from_str(&env, "Batch Lock Test");
+
+    client.batch_issue(
+        &instructor,
+        &vec![&env, symbol_short!("BLK1")],
+        &vec![&env, Address::generate(&env)],
+        &course_name,
+    );
+    // Must succeed — lock was released
+    client.batch_issue(
+        &instructor,
+        &vec![&env, symbol_short!("BLK2")],
+        &vec![&env, Address::generate(&env)],
+        &course_name,
+    );
+}

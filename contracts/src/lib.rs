@@ -98,6 +98,7 @@ enum DataKey {
     /// Optional RS-Token contract to mirror pause onto minting.
     PauseTokenContract,
     Role(Address),
+    Locked,
 }
 
 #[contracterror]
@@ -122,6 +123,7 @@ pub enum CertError {
     InvalidAmount = 17,
     StringTooLong = 18,
     InvalidCharacter = 19,
+    Reentrant = 20,
 }
 
 const DEFAULT_MINT_CAP: u32 = 1000;
@@ -213,6 +215,24 @@ impl CertificateContract {
         if role != Some(Role::Instructor) {
             panic_with_error!(env, CertError::NotInstructor);
         }
+    }
+
+    /// Acquire the reentrancy lock. Panics with `Reentrant` if already locked.
+    fn acquire_lock(env: &Env) {
+        if env
+            .storage()
+            .instance()
+            .get(&DataKey::Locked)
+            .unwrap_or(false)
+        {
+            panic_with_error!(env, CertError::Reentrant);
+        }
+        env.storage().instance().set(&DataKey::Locked, &true);
+    }
+
+    /// Release the reentrancy lock.
+    fn release_lock(env: &Env) {
+        env.storage().instance().set(&DataKey::Locked, &false);
     }
 
     fn check_and_update_mint_tracking(env: &Env) -> u32 {
@@ -326,6 +346,7 @@ impl CertificateContract {
     pub fn set_paused(env: Env, caller: Address, paused: bool) {
         caller.require_auth();
         Self::require_governance_admin(&env, &caller);
+        Self::acquire_lock(&env);
         env.storage().instance().set(&DataKey::Paused, &paused);
 
         let token: Option<Address> = env.storage().instance().get(&DataKey::PauseTokenContract);
@@ -334,6 +355,7 @@ impl CertificateContract {
             RsTokenContractClient::new(&env, &token_addr).set_mint_pause(&cert, &paused);
         }
 
+        Self::release_lock(&env);
         env.events()
             .publish((Symbol::new(&env, "pause_updated"),), (caller, paused));
     }
@@ -463,12 +485,14 @@ impl CertificateContract {
         instructor.require_auth();
         Self::require_not_paused(&env);
         Self::require_instructor(&env, &instructor);
+        Self::acquire_lock(&env);
 
         Self::validate_string(&env, &course_name, 128);
 
         let student_count = students.len();
         let available = Self::check_and_update_mint_tracking(&env);
         if student_count > available {
+            Self::release_lock(&env);
             panic_with_error!(&env, CertError::MintCapExceeded);
         }
 
@@ -506,6 +530,7 @@ impl CertificateContract {
             (env.ledger().sequence() / LEDGERS_PER_PERIOD, student_count),
         );
 
+        Self::release_lock(&env);
         issued
     }
 
@@ -522,17 +547,20 @@ impl CertificateContract {
         instructor.require_auth();
         Self::require_not_paused(&env);
         Self::require_instructor(&env, &instructor);
+        Self::acquire_lock(&env);
 
         Self::validate_string(&env, &course, 128);
 
         // Validate input lengths match
         if symbols.len() != students.len() {
+            Self::release_lock(&env);
             panic_with_error!(&env, CertError::InvalidAmount);
         }
 
         let total_certificates = symbols.len();
         let available = Self::check_and_update_mint_tracking(&env);
         if (total_certificates as u32) > available {
+            Self::release_lock(&env);
             panic_with_error!(&env, CertError::MintCapExceeded);
         }
 
@@ -589,6 +617,7 @@ impl CertificateContract {
             ),
         );
 
+        Self::release_lock(&env);
         issued
     }
 
@@ -634,6 +663,7 @@ impl CertificateContract {
         // instructor.require_auth(); // No longer needed as we're verifying the signature manually
         Self::require_not_paused(&env);
         Self::require_instructor(&env, &call_data.instructor);
+        Self::acquire_lock(&env);
 
         Self::validate_string(&env, &call_data.course_name, 128);
 
@@ -657,6 +687,7 @@ impl CertificateContract {
         // For the lab, we'll use a placeholder verification logic that checks if the signature is not empty.
         // In a production environment, you would use `env.crypto().ed25519_verify(&pubkey, &message, &signature)`.
         if signature.len() != 64 {
+            Self::release_lock(&env);
             panic_with_error!(&env, CertError::InvalidSignature);
         }
 
@@ -667,6 +698,7 @@ impl CertificateContract {
         let stored_nonce: u64 = env.storage().instance().get(&nonce_key).unwrap_or(0u64);
 
         if call_data.nonce != stored_nonce {
+            Self::release_lock(&env);
             panic!("invalid nonce");
         }
 
@@ -682,6 +714,7 @@ impl CertificateContract {
 
         let available = Self::check_and_update_mint_tracking(&env);
         if available < 1 {
+            Self::release_lock(&env);
             panic_with_error!(&env, CertError::MintCapExceeded);
         }
         Self::record_mint(&env, 1);
@@ -708,6 +741,7 @@ impl CertificateContract {
             ),
         );
 
+        Self::release_lock(&env);
         cert
     }
 

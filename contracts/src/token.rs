@@ -12,6 +12,7 @@ enum DataKey {
     MintPaused,
     Owner,
     TokenMetadata,
+    Locked,
 }
 
 #[contracterror]
@@ -25,6 +26,7 @@ pub enum TokenError {
     NotStudent = 6,
     TransferFailed = 7,
     MetadataNotFound = 8,
+    Reentrant = 9,
 }
 
 #[contract]
@@ -80,6 +82,22 @@ impl RsTokenContract {
         }
     }
 
+    fn acquire_lock(env: &Env) {
+        if env
+            .storage()
+            .instance()
+            .get(&DataKey::Locked)
+            .unwrap_or(false)
+        {
+            panic_with_error!(env, TokenError::Reentrant);
+        }
+        env.storage().instance().set(&DataKey::Locked, &true);
+    }
+
+    fn release_lock(env: &Env) {
+        env.storage().instance().set(&DataKey::Locked, &false);
+    }
+
     /// Only the certificate contract may pause minting (invoked when the cert contract pauses).
     pub fn set_mint_pause(env: Env, caller: Address, paused: bool) {
         caller.require_auth();
@@ -102,6 +120,7 @@ impl RsTokenContract {
     pub fn mint(env: Env, caller: Address, student: Address, token_id: u32, amount: i128) {
         caller.require_auth();
         Self::require_mint_not_paused(&env);
+        Self::acquire_lock(&env);
 
         let certificate_contract: Address = env
             .storage()
@@ -110,10 +129,12 @@ impl RsTokenContract {
             .unwrap();
 
         if caller != certificate_contract {
+            Self::release_lock(&env);
             panic_with_error!(&env, TokenError::NotAuthorized);
         }
 
         if amount <= 0 {
+            Self::release_lock(&env);
             panic_with_error!(&env, TokenError::InvalidAmount);
         }
 
@@ -122,6 +143,8 @@ impl RsTokenContract {
         env.storage()
             .instance()
             .set(&balance_key, &(current_balance + amount));
+
+        Self::release_lock(&env);
     }
 
     /// Gets the balance of a specific token ID for a student.
