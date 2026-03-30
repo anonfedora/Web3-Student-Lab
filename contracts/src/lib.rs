@@ -633,6 +633,7 @@ impl CertificateContract {
             // Batch event emission (emit one event per certificate for transparency)
             env.events().publish(
                 (
+                    Symbol::new(&env, "v1_batch_cert_issued"),
                     Symbol::new(&env, "batch_cert_issued"),
                     course_symbol.clone(),
                 ),
@@ -644,6 +645,7 @@ impl CertificateContract {
 
         // Emit summary event for the entire batch operation
         env.events().publish(
+            (Symbol::new(&env, "v1_batch_issue_completed"),),
             (Symbol::new(&env, "batch_issue_completed"),),
             (instructor.clone(), total_certificates, course.clone()),
         );

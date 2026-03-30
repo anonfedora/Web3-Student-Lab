@@ -97,6 +97,49 @@ impl RsTokenContract {
         env.storage().instance().set(&DataKey::Locked, &false);
     }
 
+    fn only_owner(env: &Env, caller: &Address) {
+        caller.require_auth();
+        Self::check_owner(env, caller);
+    }
+
+    fn check_owner(env: &Env, caller: &Address) {
+        let owner: Address = env.storage().instance().get(&DataKey::Owner).unwrap();
+
+        if caller != &owner {
+            panic_with_error!(env, TokenError::NotAuthorized);
+        }
+    }
+
+    /// Transfers ownership of the contract to a new address.
+    /// Only the current owner can call this.
+    pub fn transfer_ownership(env: Env, caller: Address, new_owner: Address) {
+        Self::only_owner(&env, &caller);
+
+        env.storage().instance().set(&DataKey::Owner, &new_owner);
+
+        // Emit OwnershipTransferred event
+        env.events().publish(
+            ("OwnershipTransferred", "previous_owner", "new_owner"),
+            (caller, new_owner),
+        );
+    }
+
+    /// Updates the certificate contract address allowed to mint RS-Tokens.
+    /// Only the contract owner can call this.
+    pub fn set_certificate_contract(env: Env, caller: Address, new_certificate_contract: Address) {
+        Self::only_owner(&env, &caller);
+
+        env.storage()
+            .instance()
+            .set(&DataKey::CertificateContract, &new_certificate_contract);
+
+        // Emit CertificateContractUpdated event
+        env.events().publish(
+            ("CertificateContractUpdated", "new_certificate_contract"),
+            (new_certificate_contract,),
+        );
+    }
+
     /// Only the certificate contract may pause minting (invoked when the cert contract pauses).
     pub fn set_mint_pause(env: Env, caller: Address, paused: bool) {
         caller.require_auth();
@@ -189,6 +232,8 @@ impl RsTokenContract {
         }
 
         // Check authorization: only owner or the student themselves can burn
+        if caller != student {
+            Self::check_owner(&env, &caller);
         let owner: Address = env.storage().instance().get(&DataKey::Owner).unwrap();
 
         if caller != owner && caller != student {
@@ -299,6 +344,7 @@ impl RsTokenContract {
     /// Update token metadata URI. Only contract owner can call this.
     /// Admin function to update the off-chain JSON description URI.
     pub fn update_uri(env: Env, caller: Address, new_uri: String) {
+        Self::only_owner(&env, &caller);
         caller.require_auth();
 
         // Check authorization: only owner can update metadata
@@ -774,5 +820,75 @@ mod tests {
         // Verify the URI was actually updated
         let updated_metadata = client.get_metadata();
         assert_eq!(updated_metadata.uri, new_uri);
+    }
+
+    #[test]
+    fn test_ownership_transfer() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(RsTokenContract, ());
+        let client = RsTokenContractClient::new(&env, &contract_id);
+
+        let certificate_contract = Address::generate(&env);
+        let new_owner = Address::generate(&env);
+
+        client.init(&certificate_contract);
+
+        // Initial owner is certificate_contract
+        client.transfer_ownership(&certificate_contract, &new_owner);
+
+        // New owner can update URI
+        let new_uri = String::from_str(&env, "https://new-owner.example.com");
+        client.update_uri(&new_owner, &new_uri);
+        assert_eq!(client.get_metadata().uri, new_uri);
+
+        // Old owner cannot update URI anymore
+        let res = client.try_update_uri(&certificate_contract, &String::from_str(&env, "fail"));
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_set_certificate_contract() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(RsTokenContract, ());
+        let client = RsTokenContractClient::new(&env, &contract_id);
+
+        let initial_cert = Address::generate(&env);
+        let new_cert = Address::generate(&env);
+        let student = Address::generate(&env);
+
+        client.init(&initial_cert);
+
+        // Owner (initial_cert) updates certificate contract
+        client.set_certificate_contract(&initial_cert, &new_cert);
+
+        // New cert contract can mint
+        client.mint(&new_cert, &student, &1, &100);
+        assert_eq!(client.get_balance(&student, &1), 100);
+
+        // Old cert contract cannot mint anymore
+        let res = client.try_mint(&initial_cert, &student, &1, &100);
+        assert!(res.is_err());
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_unauthorized_ownership_transfer() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(RsTokenContract, ());
+        let client = RsTokenContractClient::new(&env, &contract_id);
+
+        let certificate_contract = Address::generate(&env);
+        let unauthorized = Address::generate(&env);
+        let new_owner = Address::generate(&env);
+
+        client.init(&certificate_contract);
+
+        client.transfer_ownership(&unauthorized, &new_owner);
     }
 }
