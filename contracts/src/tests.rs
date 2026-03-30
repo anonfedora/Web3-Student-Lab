@@ -155,6 +155,33 @@ fn verifies_event_emitted_per_student() {
 }
 
 #[test]
+fn gets_certificates_by_student_across_courses() {
+    let (env, instructor, _, _, client) = setup();
+
+    let student = Address::generate(&env);
+    let course_name = String::from_str(&env, "Soroban");
+
+    client.issue(
+        &instructor,
+        &symbol_short!("RUST"),
+        &vec![&env, student.clone()],
+        &course_name,
+    );
+    client.issue(
+        &instructor,
+        &symbol_short!("WEB3"),
+        &vec![&env, student.clone()],
+        &course_name,
+    );
+
+    let certificates = client.get_certificates_by_student(&student);
+
+    assert_eq!(certificates.len(), 2);
+    assert_eq!(certificates.get(0).unwrap().student, student);
+    assert_eq!(certificates.get(1).unwrap().student, student);
+}
+
+#[test]
 fn admin_can_revoke_certificate() {
     let (env, admin, _, _, client) = setup();
 
@@ -846,6 +873,8 @@ fn batch_issue_gas_efficiency() {
         "BATCH9",
     ];
 
+    for symbol_name in symbol_names {
+        symbols.push_back(Symbol::new(&env, symbol_name));
     for name in &symbol_names {
         symbols.push_back(Symbol::new(&env, name));
         students.push_back(Address::generate(&env));

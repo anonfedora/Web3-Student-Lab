@@ -77,6 +77,12 @@ pub struct CertKey {
 
 #[contracttype]
 #[derive(Clone)]
+pub struct StudentCertificatesKey {
+    pub student: Address,
+}
+
+#[contracttype]
+#[derive(Clone)]
 pub struct MetaTxCallData {
     pub instructor: Address,
     pub course_symbol: Symbol,
@@ -324,6 +330,48 @@ impl CertificateContract {
             .set(&DataKey::MintedThisPeriod, &new_minted);
     }
 
+    fn persist_certificate(env: &Env, cert: &Certificate) {
+        let key = CertKey {
+            course_symbol: cert.course_symbol.clone(),
+            student: cert.student.clone(),
+        };
+
+        env.storage().persistent().set(&key, cert);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, CERT_TTL_LEDGERS, CERT_TTL_LEDGERS);
+
+        Self::index_certificate_for_student(env, &cert.student, &cert.course_symbol);
+    }
+
+    fn index_certificate_for_student(env: &Env, student: &Address, course_symbol: &Symbol) {
+        let index_key = StudentCertificatesKey {
+            student: student.clone(),
+        };
+        let mut course_symbols: Vec<Symbol> = env
+            .storage()
+            .persistent()
+            .get(&index_key)
+            .unwrap_or_else(|| Vec::new(env));
+
+        let mut already_indexed = false;
+        for indexed_symbol in course_symbols.iter() {
+            if indexed_symbol == *course_symbol {
+                already_indexed = true;
+                break;
+            }
+        }
+
+        if !already_indexed {
+            course_symbols.push_back(course_symbol.clone());
+            env.storage().persistent().set(&index_key, &course_symbols);
+        }
+
+        env.storage()
+            .persistent()
+            .extend_ttl(&index_key, CERT_TTL_LEDGERS, CERT_TTL_LEDGERS);
+    }
+
     /// Returns true if `account` has `role`. `Admin` matches the three governance addresses only.
     pub fn has_role(env: Env, account: Address, role: Role) -> bool {
         match role {
@@ -536,11 +584,6 @@ impl CertificateContract {
         let mut issued: Vec<Certificate> = Vec::new(&env);
 
         for student in students.iter() {
-            let key = CertKey {
-                course_symbol: course_symbol.clone(),
-                student: student.clone(),
-            };
-
             let cert = Certificate {
                 course_symbol: course_symbol.clone(),
                 student: student.clone(),
@@ -549,16 +592,11 @@ impl CertificateContract {
                 revoked: false,
             };
 
-            env.storage().persistent().set(&key, &cert);
-            env.storage()
-                .persistent()
-                .extend_ttl(&key, CERT_TTL_LEDGERS, CERT_TTL_LEDGERS);
-
+            Self::persist_certificate(&env, &cert);
             env.events().publish(
                 (Symbol::new(&env, "v1_cert_issued"), course_symbol.clone()),
                 (student.clone(), course_name.clone()),
             );
-
             issued.push_back(cert);
         }
 
@@ -611,11 +649,6 @@ impl CertificateContract {
             let course_symbol = symbols.get(i).unwrap();
             let student = students.get(i).unwrap();
 
-            let key = CertKey {
-                course_symbol: course_symbol.clone(),
-                student: student.clone(),
-            };
-
             let cert = Certificate {
                 course_symbol: course_symbol.clone(),
                 student: student.clone(),
@@ -624,11 +657,7 @@ impl CertificateContract {
                 revoked: false,
             };
 
-            // Batch storage operations for efficiency
-            env.storage().persistent().set(&key, &cert);
-            env.storage()
-                .persistent()
-                .extend_ttl(&key, CERT_TTL_LEDGERS, CERT_TTL_LEDGERS);
+            Self::persist_certificate(&env, &cert);
 
             // Batch event emission (emit one event per certificate for transparency)
             env.events().publish(
@@ -697,6 +726,29 @@ impl CertificateContract {
             student,
         };
         env.storage().persistent().get(&key)
+    }
+
+    /// Returns every certificate indexed for a student across all course symbols.
+    pub fn get_certificates_by_student(env: Env, student: Address) -> Vec<Certificate> {
+        let index_key = StudentCertificatesKey {
+            student: student.clone(),
+        };
+        let course_symbols: Vec<Symbol> = env
+            .storage()
+            .persistent()
+            .get(&index_key)
+            .unwrap_or_else(|| Vec::new(&env));
+        let mut certificates = Vec::new(&env);
+
+        for course_symbol in course_symbols.iter() {
+            if let Some(cert) =
+                Self::get_certificate(env.clone(), course_symbol.clone(), student.clone())
+            {
+                certificates.push_back(cert);
+            }
+        }
+
+        certificates
     }
 
     /// Extend the TTL of a certificate entry in persistent storage.
@@ -781,11 +833,6 @@ impl CertificateContract {
             .set(&nonce_key, &(stored_nonce + 1));
 
         let issue_date = env.ledger().timestamp();
-        let key = CertKey {
-            course_symbol: call_data.course_symbol.clone(),
-            student: call_data.student.clone(),
-        };
-
         let available = Self::check_and_update_mint_tracking(&env);
         if available < 1 {
             Self::release_lock(&env);
@@ -801,10 +848,7 @@ impl CertificateContract {
             revoked: false,
         };
 
-        env.storage().persistent().set(&key, &cert);
-        env.storage()
-            .persistent()
-            .extend_ttl(&key, CERT_TTL_LEDGERS, CERT_TTL_LEDGERS);
+        Self::persist_certificate(&env, &cert);
 
         env.events().publish(
             (

@@ -795,6 +795,7 @@ mod tests {
         // Verify all required fields are present and have correct types
         assert!(!metadata.name.is_empty());
         assert!(!metadata.symbol.is_empty());
+        assert_eq!(metadata.decimals, 0);
         assert!(!metadata.uri.is_empty());
 
         // Verify symbol is reasonable length (common token symbols are 3-5 chars)
