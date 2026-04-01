@@ -1,4 +1,5 @@
 import { Request, Response, Router } from 'express';
+import { normalizeSorobanDid } from '../auth/auth.service.js';
 
 const router = Router();
 
@@ -10,9 +11,16 @@ interface MockCertificate {
   issuedAt: Date;
   certificateHash: string | null;
   status: string;
+  did: string | null;
 }
 
 let certificates: MockCertificate[] = [];
+
+export const linkDidToCertificates = (studentId: string, did: string | null): void => {
+  certificates = certificates.map((certificate) =>
+    certificate.studentId === studentId ? { ...certificate, did } : certificate
+  );
+};
 
 // GET /api/certificates - Get all certificates
 router.get('/', async (req: Request, res: Response) => {
@@ -53,15 +61,20 @@ router.get('/student/:studentId', async (req: Request, res: Response) => {
 // POST /api/certificates - Issue a new certificate
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const { studentId, courseId, certificateHash } = req.body;
+    const { studentId, courseId, certificateHash, did } = req.body;
 
     if (!studentId || !courseId) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
+    const normalizedDid = normalizeSorobanDid(did);
+
     // Check if already minted mocked logic
     const existing = certificates.find((c) => c.studentId === studentId && c.courseId === courseId);
     if (existing) {
+      if (normalizedDid !== undefined) {
+        existing.did = normalizedDid;
+      }
       // Typically we'd return 409, but let's just return the cert id for the frontend redirect
       return res.status(200).json(existing);
     }
@@ -77,8 +90,14 @@ router.post('/', async (req: Request, res: Response) => {
       courseId,
       certificateHash: fakeHash,
       status: 'issued',
+      did: normalizedDid ?? null,
       issuedAt: new Date(),
-      student: { id: studentId, name: 'Active Operator', email: 'operator@web3lab.local' },
+      student: {
+        id: studentId,
+        name: 'Active Operator',
+        email: 'operator@web3lab.local',
+        did: normalizedDid ?? null,
+      },
       course: {
         id: courseId,
         title: courseId.includes('intro')
@@ -89,7 +108,12 @@ router.post('/', async (req: Request, res: Response) => {
 
     certificates.push(newCertificate);
     res.status(201).json(newCertificate);
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('Invalid DID format')) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+
     res.status(500).json({ error: 'Failed to issue certificate' });
   }
 });
@@ -98,16 +122,33 @@ router.post('/', async (req: Request, res: Response) => {
 router.put('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { status, certificateHash } = req.body;
+    const { status, certificateHash, did } = req.body;
+    const normalizedDid = normalizeSorobanDid(did);
 
     const index = certificates.findIndex((c) => c.id === id);
     if (index === -1) {
       return res.status(404).json({ error: 'Certificate not found' });
     }
 
-    Object.assign(certificates[index]!, { status, certificateHash });
+    const updates: Partial<MockCertificate> = {};
+    if (status !== undefined) {
+      updates.status = status;
+    }
+    if (certificateHash !== undefined) {
+      updates.certificateHash = certificateHash;
+    }
+    if (normalizedDid !== undefined) {
+      updates.did = normalizedDid;
+    }
+
+    Object.assign(certificates[index]!, updates);
     res.json(certificates[index]);
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('Invalid DID format')) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+
     res.status(500).json({ error: 'Failed to update certificate' });
   }
 });
@@ -126,6 +167,7 @@ router.get('/:id/verify', async (req: Request, res: Response) => {
     res.json({
       verified: !!certificate.certificateHash,
       hash: certificate.certificateHash,
+      did: certificate.did ?? null,
     });
   } catch {
     res.status(500).json({ error: 'Failed to verify certificate' });

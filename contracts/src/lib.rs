@@ -33,6 +33,7 @@ pub struct Certificate {
     pub student: Address,
     pub course_name: String,
     pub issue_date: u64,
+    pub did: Option<String>,
     pub revoked: bool,
 }
 
@@ -346,6 +347,42 @@ impl CertificateContract {
         Self::index_certificate_for_student(env, &cert.student, &cert.course_symbol);
     }
 
+    fn load_student_did(env: &Env, student: &Address) -> Option<String> {
+        let current_did: Option<StudentDid> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::StudentDid(student.clone()));
+
+        current_did.map(|entry| entry.did)
+    }
+
+    fn sync_did_to_student_certificates(env: &Env, student: &Address, did: Option<String>) {
+        let index_key = StudentCertificatesKey {
+            student: student.clone(),
+        };
+        let course_symbols: Vec<Symbol> = env
+            .storage()
+            .persistent()
+            .get(&index_key)
+            .unwrap_or_else(|| Vec::new(env));
+
+        for course_symbol in course_symbols.iter() {
+            let key = CertKey {
+                course_symbol: course_symbol.clone(),
+                student: student.clone(),
+            };
+
+            let stored_cert: Option<Certificate> = env.storage().persistent().get(&key);
+            if let Some(mut cert) = stored_cert {
+                cert.did = did.clone();
+                env.storage().persistent().set(&key, &cert);
+                env.storage()
+                    .persistent()
+                    .extend_ttl(&key, CERT_TTL_LEDGERS, CERT_TTL_LEDGERS);
+            }
+        }
+    }
+
     fn index_certificate_for_student(env: &Env, student: &Address, course_symbol: &Symbol) {
         let index_key = StudentCertificatesKey {
             student: student.clone(),
@@ -591,6 +628,7 @@ impl CertificateContract {
                 student: student.clone(),
                 course_name: course_name.clone(),
                 issue_date,
+                did: Self::load_student_did(&env, &student),
                 revoked: false,
             };
 
@@ -656,6 +694,7 @@ impl CertificateContract {
                 student: student.clone(),
                 course_name: course.clone(),
                 issue_date,
+                did: Self::load_student_did(&env, &student),
                 revoked: false,
             };
 
@@ -846,6 +885,7 @@ impl CertificateContract {
             student: call_data.student.clone(),
             course_name: call_data.course_name.clone(),
             issue_date,
+            did: Self::load_student_did(&env, &call_data.student),
             revoked: false,
         };
 
@@ -908,6 +948,7 @@ impl CertificateContract {
         Self::require_valid_did_format(&did);
 
         let timestamp = env.ledger().timestamp();
+        let did_key = DataKey::StudentDid(caller.clone());
 
         let student_did = StudentDid {
             student: caller.clone(),
@@ -915,9 +956,11 @@ impl CertificateContract {
             updated_at: timestamp,
         };
 
+        env.storage().persistent().set(&did_key, &student_did);
         env.storage()
-            .instance()
-            .set(&DataKey::StudentDid(caller.clone()), &student_did);
+            .persistent()
+            .extend_ttl(&did_key, CERT_TTL_LEDGERS, CERT_TTL_LEDGERS);
+        Self::sync_did_to_student_certificates(&env, &caller, Some(did.clone()));
 
         env.events().publish(
             (Symbol::new(&env, "v1_did_updated"),),
@@ -926,25 +969,22 @@ impl CertificateContract {
     }
 
     pub fn get_did(env: Env, student: Address) -> Option<StudentDid> {
-        env.storage().instance().get(&DataKey::StudentDid(student))
+        env.storage().persistent().get(&DataKey::StudentDid(student))
     }
 
     pub fn remove_did(env: Env, caller: Address, student: Address) {
         caller.require_auth();
         Self::require_governance_admin(&env, &caller);
 
-        let existing_did: Option<StudentDid> = env
-            .storage()
-            .instance()
-            .get(&DataKey::StudentDid(student.clone()));
+        let did_key = DataKey::StudentDid(student.clone());
+        let existing_did: Option<StudentDid> = env.storage().persistent().get(&did_key);
 
         if existing_did.is_none() {
             panic_with_error!(&env, CertError::DidNotFound);
         }
 
-        env.storage()
-            .instance()
-            .remove(&DataKey::StudentDid(student.clone()));
+        env.storage().persistent().remove(&did_key);
+        Self::sync_did_to_student_certificates(&env, &student, None);
 
         env.events()
             .publish((Symbol::new(&env, "v1_did_removed"),), (caller, student));
@@ -967,18 +1007,32 @@ impl CertificateContract {
         }
     }
 
-    /// `did:soroban:` prefix, max length 256 bytes.
+    /// Accepts `did:soroban:<network>:<identifier>[#fragment]` and rejects whitespace or control chars.
     fn require_valid_did_format(did: &String) {
         const PREFIX: &[u8] = b"did:soroban:";
         const MAX_LEN: u32 = 256;
         let n = did.len();
-        if n < PREFIX.len() as u32 || n > MAX_LEN {
+        if n <= PREFIX.len() as u32 || n > MAX_LEN {
             panic_with_error!(did.env(), CertError::InvalidDid);
         }
         let mut buf = [0u8; 256];
         did.copy_into_slice(&mut buf[..n as usize]);
-        if !buf[..n as usize].starts_with(PREFIX) {
+        let bytes = &buf[..n as usize];
+        if !bytes.starts_with(PREFIX) {
             panic_with_error!(did.env(), CertError::InvalidDid);
+        }
+
+        let suffix = &bytes[PREFIX.len()..];
+        if suffix.is_empty() {
+            panic_with_error!(did.env(), CertError::InvalidDid);
+        }
+
+        for &byte in suffix {
+            let is_allowed = byte.is_ascii_alphanumeric()
+                || matches!(byte, b':' | b'.' | b'-' | b'_' | b'%' | b'#');
+            if !is_allowed {
+                panic_with_error!(did.env(), CertError::InvalidDid);
+            }
         }
     }
 }

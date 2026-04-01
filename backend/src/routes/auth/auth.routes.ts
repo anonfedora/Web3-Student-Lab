@@ -49,25 +49,26 @@ router.post('/login', validateRequest(loginSchema), async (req: Request, res: Re
 
     res.json(authResponse);
   } catch (error) {
-    // Demo/Mock login fallback if database is unreachable
+    if (error instanceof Error && error.message === 'Invalid credentials') {
+      res.status(401).json({ error: error.message });
+      return;
+    }
+
+    // Demo/Mock login fallback only if the database is actually unreachable
     if (email && password) {
       console.warn('Database unreachable, using demo login fallback');
       res.json({
         token: 'mock-jwt-token-for-demo-purposes',
         user: {
           id: 'demo-student-id',
-          email: email,
-          firstName: 'Demo',
-          lastName: 'Student',
+          email,
+          name: 'Demo Student',
+          did: null,
         },
       });
       return;
     }
 
-    if (error instanceof Error && error.message === 'Invalid credentials') {
-      res.status(401).json({ error: error.message });
-      return;
-    }
     res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -182,6 +182,52 @@ fn gets_certificates_by_student_across_courses() {
 }
 
 #[test]
+fn update_did_links_existing_and_new_certificates() {
+    let (env, instructor, _, _, client) = setup();
+
+    env.ledger().with_mut(|ledger| ledger.timestamp = 7_777);
+
+    let student = Address::generate(&env);
+    let course_name = String::from_str(&env, "Soroban Identity");
+    let did = String::from_str(&env, "did:soroban:testnet:student-123#profile");
+
+    client.issue(
+        &instructor,
+        &symbol_short!("DIDONE"),
+        &vec![&env, student.clone()],
+        &course_name,
+    );
+
+    client.update_did(&student, &did);
+
+    let linked_did = client.get_did(&student).unwrap();
+    assert_eq!(linked_did.did, did);
+    assert_eq!(linked_did.updated_at, 7_777);
+
+    let updated_cert = client.get_certificate(&symbol_short!("DIDONE"), &student).unwrap();
+    assert_eq!(updated_cert.did, Some(did.clone()));
+
+    client.issue(
+        &instructor,
+        &symbol_short!("DIDTWO"),
+        &vec![&env, student.clone()],
+        &course_name,
+    );
+
+    let new_cert = client.get_certificate(&symbol_short!("DIDTWO"), &student).unwrap();
+    assert_eq!(new_cert.did, Some(did));
+}
+
+#[test]
+#[should_panic]
+fn rejects_invalid_soroban_did_format() {
+    let (env, _, _, _, client) = setup();
+    let student = Address::generate(&env);
+
+    client.update_did(&student, &String::from_str(&env, "https://example.com/student-1"));
+}
+
+#[test]
 fn admin_can_revoke_certificate() {
     let (env, admin, _, _, client) = setup();
 

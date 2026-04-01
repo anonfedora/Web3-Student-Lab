@@ -53,6 +53,7 @@ export const getStudentDashboard = async (studentId: string): Promise<StudentDas
           date: new Date(),
           type: 'certificate',
           hash: '0x1234567890abcdef',
+          did: 'did:soroban:testnet:demo-student#certificate',
         },
       ],
       tokenBalance: {
@@ -65,6 +66,7 @@ export const getStudentDashboard = async (studentId: string): Promise<StudentDas
         'Completed Web3 Fundamentals',
         'Earned 50 W3SL tokens',
       ],
+      studentDid: 'did:soroban:testnet:demo-student#certificate',
     };
   }
 
@@ -87,6 +89,7 @@ export const getStudentDashboard = async (studentId: string): Promise<StudentDas
     date: achievement.timestamp,
     type: 'certificate',
     hash: achievement.txHash,
+    did: student.did ?? null,
   }));
 
   const tokenBalance: TokenBalance = {
@@ -124,6 +127,7 @@ export const getStudentDashboard = async (studentId: string): Promise<StudentDas
     certificates,
     tokenBalance,
     recentActivity,
+    studentDid: student.did ?? null,
   };
 };
 

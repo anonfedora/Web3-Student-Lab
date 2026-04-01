@@ -1,5 +1,7 @@
 import { Router } from 'express';
+import { normalizeSorobanDid } from '../auth/auth.service.js';
 import prisma from '../db/index.js';
+import { linkDidToCertificates } from './certificates.js';
 
 const router = Router();
 
@@ -51,23 +53,31 @@ router.get('/:id', async (req, res) => {
 // POST /api/students - Create a new student
 router.post('/', async (req, res) => {
   try {
-    const { email, firstName, lastName } = req.body;
+    const { email, firstName, lastName, did } = req.body;
 
     if (!email || !firstName || !lastName) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
+
+    const normalizedDid = normalizeSorobanDid(did);
 
     const student = await prisma.student.create({
       data: {
         email,
         firstName,
         lastName,
+        did: normalizedDid ?? null,
         password: 'placeholder_password', // TODO: Implement proper password hashing
       },
     });
 
     res.status(201).json(student);
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('Invalid DID format')) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+
     res.status(500).json({ error: 'Failed to create student' });
   }
 });
@@ -76,7 +86,8 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { email, firstName, lastName } = req.body;
+    const { email, firstName, lastName, did } = req.body;
+    const normalizedDid = normalizeSorobanDid(did);
 
     const student = await prisma.student.update({
       where: { id },
@@ -84,11 +95,25 @@ router.put('/:id', async (req, res) => {
         email,
         firstName,
         lastName,
+        did: normalizedDid !== undefined ? normalizedDid : undefined,
       },
     });
 
+    if (normalizedDid !== undefined) {
+      await prisma.certificate.updateMany({
+        where: { studentId: id },
+        data: { did: student.did ?? null },
+      });
+      linkDidToCertificates(id, student.did ?? null);
+    }
+
     res.json(student);
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('Invalid DID format')) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+
     res.status(500).json({ error: 'Failed to update student' });
   }
 });

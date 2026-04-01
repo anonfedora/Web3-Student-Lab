@@ -2,6 +2,7 @@ export interface User {
   id: string;
   email: string;
   name: string;
+  did?: string | null;
 }
 
 export interface LoginRequest {

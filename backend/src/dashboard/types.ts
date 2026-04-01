@@ -7,6 +7,7 @@ export interface Achievement {
   date: Date;
   type: 'certificate' | 'badge' | 'reward';
   hash?: string;
+  did?: string | null;
 }
 
 export interface TokenBalance {
@@ -21,4 +22,5 @@ export interface StudentDashboard {
   certificates: Achievement[];
   tokenBalance: TokenBalance;
   recentActivity: string[];
+  studentDid?: string | null;
 }

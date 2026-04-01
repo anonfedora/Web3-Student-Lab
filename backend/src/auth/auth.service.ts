@@ -1,11 +1,39 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import prisma from '../db/index.js';
-import { RegisterRequest, LoginRequest, AuthResponse, User } from './types.js';
+import { AuthResponse, LoginRequest, RegisterRequest, User } from './types.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 const JWT_EXPIRES_IN = '7d';
 const SALT_ROUNDS = 10;
+const DID_REGEX = /^did:soroban:[A-Za-z0-9._:%-]+(?:#[A-Za-z0-9._:%-]+)?$/;
+
+export const isValidSorobanDid = (did: string): boolean => {
+  return did.length <= 256 && DID_REGEX.test(did);
+};
+
+export const normalizeSorobanDid = (
+  did: string | null | undefined
+): string | null | undefined => {
+  if (did === undefined) {
+    return undefined;
+  }
+
+  if (did === null) {
+    return null;
+  }
+
+  const trimmedDid = did.trim();
+  if (!trimmedDid) {
+    return null;
+  }
+
+  if (!isValidSorobanDid(trimmedDid)) {
+    throw new Error('Invalid DID format. Expected did:soroban:<network>:<identifier>');
+  }
+
+  return trimmedDid;
+};
 
 /**
  * Hash a password using bcrypt
@@ -46,11 +74,13 @@ export const formatUserResponse = (student: {
   email: string;
   firstName: string;
   lastName: string;
+  did?: string | null;
 }): User => {
   return {
     id: student.id,
     email: student.email,
     name: `${student.firstName} ${student.lastName}`,
+    did: student.did ?? null,
   };
 };
 
