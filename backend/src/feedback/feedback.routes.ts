@@ -1,12 +1,12 @@
 import { Request, Response, Router } from 'express';
 import { authenticate } from '../auth/auth.middleware.js';
 import {
-    createFeedback,
-    deleteFeedback,
-    getCourseRatingSummary,
-    getFeedbackByCourse,
-    getFeedbackByStudentAndCourse,
-    updateFeedback,
+  createFeedback,
+  deleteFeedback,
+  getCourseRatingSummary,
+  getFeedbackByCourse,
+  getFeedbackByStudentAndCourse,
+  updateFeedback,
 } from './feedback.service.js';
 import { CreateFeedbackRequest, UpdateFeedbackRequest } from './types.js';
 

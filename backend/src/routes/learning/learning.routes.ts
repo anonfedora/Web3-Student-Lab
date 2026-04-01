@@ -2,15 +2,15 @@ import { Request, Response, Router } from 'express';
 import { authenticate } from '../../auth/auth.middleware.js';
 import { validateBody, validateParams, validateQuery } from '../../utils/validation.js';
 import {
-    getCourseCurriculum,
-    getStudentProgress,
-    listCourses,
-    updateStudentProgress,
+  getCourseCurriculum,
+  getStudentProgress,
+  listCourses,
+  updateStudentProgress,
 } from './learning.service.js';
 import {
-    courseParamsSchema,
-    coursesQuerySchema,
-    progressUpdateSchema,
+  courseParamsSchema,
+  coursesQuerySchema,
+  progressUpdateSchema,
 } from './validation.schemas.js';
 
 const router = Router();

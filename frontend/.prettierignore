@@ -1,0 +1,6 @@
+# Frontend build output
+.next/
+out/
+node_modules/
+*.log
+pnpm-lock.yaml

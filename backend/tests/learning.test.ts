@@ -65,9 +65,15 @@ describe('Learning Module Integration Tests', () => {
         .get('/api/v1/learning/courses?difficulty=beginner')
         .expect(200);
 
-      interface TestLesson { difficulty: string }
-      interface TestModule { lessons: TestLesson[] }
-      interface TestCourse { modules: TestModule[] }
+      interface TestLesson {
+        difficulty: string;
+      }
+      interface TestModule {
+        lessons: TestLesson[];
+      }
+      interface TestCourse {
+        modules: TestModule[];
+      }
 
       response.body.courses.forEach((course: TestCourse) => {
         course.modules.forEach((module: TestModule) => {

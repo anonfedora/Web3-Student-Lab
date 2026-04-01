@@ -12,9 +12,7 @@ export const isValidSorobanDid = (did: string): boolean => {
   return did.length <= 256 && DID_REGEX.test(did);
 };
 
-export const normalizeSorobanDid = (
-  did: string | null | undefined
-): string | null | undefined => {
+export const normalizeSorobanDid = (did: string | null | undefined): string | null | undefined => {
   if (did === undefined) {
     return undefined;
   }
