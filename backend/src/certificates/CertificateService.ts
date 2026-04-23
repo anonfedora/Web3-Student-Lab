@@ -1,9 +1,9 @@
 import prisma from '../db/index.js';
 import {
   Certificate,
-  CertificateStatus,
   CertificateMetadata,
   MintCertificateRequest,
+  VerificationResult,
 } from '../types/certificate.types.js';
 import { MetadataGenerator } from './MetadataGenerator.js';
 import { certificateBlockchainService } from '../blockchain/CertificateBlockchainService.js';
@@ -74,8 +74,8 @@ export class CertificateService {
         courseId,
         tokenId: tokenIdValue,
         issuedAt: new Date(),
-        certificateHash: null, // Will be set after blockchain transaction
-        status: CertificateStatus.MINTED,
+        certificateHash: null,
+        status: 'MINTED',
         did: did || issuerDid,
         contractAddress,
         network,
@@ -87,7 +87,7 @@ export class CertificateService {
       },
     });
 
-    // Generate the metadata (used for on-chain and off-chain storage)
+    // Generate the metadata
     const metadata = this.metadataGenerator.generate(certificate, course, student);
 
     try {
@@ -100,15 +100,15 @@ export class CertificateService {
         data: {
           certificateHash: mintResult.transactionHash,
           contractAddress: mintResult.contractAddress,
-          status: CertificateStatus.ACTIVE, // Move to active after successful mint
-          metadataUri: metadata.image, // Store metadata URI for reference
+          status: 'ACTIVE',
+          metadataUri: metadata.image,
         },
       });
 
-      // Update returned certificate with transaction hash
+      // Update returned certificate
       certificate.certificateHash = mintResult.transactionHash;
       certificate.contractAddress = mintResult.contractAddress;
-      certificate.status = CertificateStatus.ACTIVE;
+      certificate.status = 'ACTIVE' as any;
 
       logger.info(`Certificate minted on-chain: ${certificateId} -> token ${mintResult.tokenId}`, {
         certificateId,
@@ -116,12 +116,11 @@ export class CertificateService {
         txHash: mintResult.transactionHash,
       });
     } catch (error) {
-      // If minting fails, mark as failed but keep record
       logger.error(`Blockchain mint failed for ${certificateId}:`, error);
       await prisma.certificate.update({
         where: { id: certificateId },
         data: {
-          status: 'failed' as CertificateStatus,
+          status: 'FAILED',
         },
       });
       throw new Error(
@@ -129,6 +128,7 @@ export class CertificateService {
       );
     }
 
+    // Return certificate with metadata
     return { ...certificate, metadata };
   }
 
@@ -140,7 +140,12 @@ export class CertificateService {
     const certificate = await prisma.certificate.findFirst({
       where: { tokenId },
       include: {
-        student: true,
+        student: {
+          select: {
+            walletAddress: true,
+            did: true,
+          },
+        },
         course: true,
       },
     });
@@ -151,15 +156,14 @@ export class CertificateService {
 
     // Get student wallet address
     const walletAddress =
-      certificate.student.walletAddress ||
-      (await this.getStudentWalletAddress(certificate.studentId));
+      certificate.student.walletAddress || this.extractWalletFromDid(certificate.student.did);
 
     // Return verification result
     return {
-      tokenId: certificate.tokenId!,
+      tokenId: certificate.tokenId || '',
       owner: walletAddress,
       mintedAt: certificate.issuedAt,
-      contractAddress: certificate.contractAddress!,
+      contractAddress: certificate.contractAddress || '',
       transactionHash: certificate.transactionHash || certificate.certificateHash || '',
       network: certificate.network || 'stellar-testnet',
     };
@@ -172,7 +176,14 @@ export class CertificateService {
     const certificate = await prisma.certificate.findUnique({
       where: { id: certificateId },
       include: {
-        student: true,
+        student: {
+          select: {
+            walletAddress: true,
+            did: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
         course: true,
       },
     });
@@ -181,24 +192,25 @@ export class CertificateService {
       return {
         isValid: false,
         certificate: null,
-        status: 'invalid' as CertificateStatus,
+        status: 'invalid' as any,
         onChainData: null,
         message: 'Certificate not found',
       };
     }
 
-    const walletAddress = await this.getStudentWalletAddress(certificate.studentId);
+    const walletAddress =
+      certificate.student.walletAddress || this.extractWalletFromDid(certificate.student.did);
     const metadata = this.metadataGenerator.generate(
       certificate,
-      certificate.course,
+      certificate.course!,
       certificate.student
     );
 
-    const onChainData = {
-      tokenId: certificate.tokenId!,
+    const onChainData: VerificationResult['onChainData'] = {
+      tokenId: certificate.tokenId || '',
       owner: walletAddress,
       mintedAt: certificate.issuedAt,
-      contractAddress: certificate.contractAddress!,
+      contractAddress: certificate.contractAddress || '',
       transactionHash: certificate.transactionHash || certificate.certificateHash || '',
       network: certificate.network || 'stellar-testnet',
     };
@@ -206,11 +218,11 @@ export class CertificateService {
     const result: VerificationResult = {
       isValid: true,
       certificate: metadata,
-      status: certificate.status,
+      status: certificate.status as any,
       onChainData,
     };
 
-    if (certificate.status === CertificateStatus.REVOKED) {
+    if (certificate.status === 'REVOKED') {
       result.revocationInfo = {
         revokedAt: certificate.revokedAt!,
         reason: certificate.revocationReason!,
@@ -227,10 +239,19 @@ export class CertificateService {
   async batchVerify(tokenIds: string[]): Promise<VerificationResult[]> {
     const certificates = await prisma.certificate.findMany({
       where: {
-        OR: tokenIds.map((id) => ({ tokenId: id })),
+        tokenId: {
+          in: tokenIds,
+        },
       },
       include: {
-        student: true,
+        student: {
+          select: {
+            walletAddress: true,
+            did: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
         course: true,
       },
     });
@@ -240,163 +261,41 @@ export class CertificateService {
     const results: VerificationResult[] = [];
 
     for (const tokenId of tokenIds) {
-      const certificate = certMap.get(tokenId);
+      const cert = certMap.get(tokenId);
 
-      if (!certificate) {
+      if (!cert) {
         results.push({
           isValid: false,
           certificate: null,
-          status: 'invalid' as CertificateStatus,
+          status: 'invalid' as any,
           onChainData: null,
           message: 'Certificate not found',
         });
         continue;
       }
 
-      const walletAddress = await this.getStudentWalletAddress(certificate.studentId);
-      const metadata = this.metadataGenerator.generate(
-        certificate,
-        certificate.course,
-        certificate.student
-      );
+      const walletAddress =
+        cert.student.walletAddress || this.extractWalletFromDid(cert.student.did);
+      const metadata = this.metadataGenerator.generate(cert, cert.course!, cert.student);
 
-      const onChainData = {
-        tokenId: certificate.tokenId!,
+      const onChainData: VerificationResult['onChainData'] = {
+        tokenId: cert.tokenId || '',
         owner: walletAddress,
-        mintedAt: certificate.issuedAt,
-        contractAddress: certificate.contractAddress!,
-        transactionHash: certificate.transactionHash || certificate.certificateHash || '',
-        network: certificate.network || 'stellar-testnet',
+        mintedAt: cert.issuedAt,
+        contractAddress: cert.contractAddress || '',
+        transactionHash: cert.transactionHash || cert.certificateHash || '',
+        network: cert.network || 'stellar-testnet',
       };
 
       results.push({
         isValid: true,
         certificate: metadata,
-        status: certificate.status,
+        status: cert.status as any,
         onChainData,
       });
     }
 
     return results;
-  }
-
-  /**
-   * Revokes a certificate
-   */
-  async revokeCertificate(
-    certificateId: string,
-    reason: string,
-    revokedBy: string
-  ): Promise<Certificate> {
-    const certificate = await prisma.certificate.findUnique({
-      where: { id: certificateId },
-    });
-
-    if (!certificate) {
-      throw new Error('Certificate not found');
-    }
-
-    if (certificate.status === CertificateStatus.REVOKED) {
-      throw new Error('Certificate already revoked');
-    }
-
-    if (certificate.status === CertificateStatus.EXPIRED) {
-      throw new Error('Cannot revoke an expired certificate');
-    }
-
-    // Update certificate status
-    const updated = await prisma.certificate.update({
-      where: { id: certificateId },
-      data: {
-        status: CertificateStatus.REVOKED,
-        revokedAt: new Date(),
-        revocationReason: reason,
-        revokedBy,
-        updatedAt: new Date(),
-      },
-      include: {
-        student: true,
-        course: true,
-      },
-    });
-
-    logger.info(`Certificate revoked: ${certificateId}`, {
-      certificateId,
-      reason,
-      revokedBy,
-    });
-
-    return updated;
-  }
-
-  /**
-   * Reissues a certificate (creates new one, marks old as reissued)
-   */
-  async reissueCertificate(
-    originalCertificateId: string,
-    reason: string,
-    newGrade?: string,
-    issuedBy: string = ''
-  ): Promise<{ original: Certificate; new: Certificate & { metadata: CertificateMetadata } }> {
-    const original = await prisma.certificate.findUnique({
-      where: { id: originalCertificateId },
-      include: {
-        student: true,
-        course: true,
-      },
-    });
-
-    if (!original) {
-      throw new Error('Original certificate not found');
-    }
-
-    if (original.status === CertificateStatus.REVOKED) {
-      throw new Error('Cannot reissue a revoked certificate');
-    }
-
-    if (original.status === CertificateStatus.EXPIRED) {
-      throw new Error('Cannot reissue an expired certificate');
-    }
-
-    // Mark original as reissued
-    await prisma.certificate.update({
-      where: { id: originalCertificateId },
-      data: {
-        status: CertificateStatus.REISSUED,
-        updatedAt: new Date(),
-      },
-    });
-
-    // Create new certificate with updated data
-    const newCertificate = await this.mintCertificate(
-      {
-        studentId: original.studentId,
-        courseId: original.courseId,
-        grade: newGrade || original.grade || undefined,
-        did: original.did,
-        tokenId: original.tokenId, // Use same tokenId
-      },
-      issuedBy,
-      original.contractAddress!,
-      original.network!
-    );
-
-    // Link new certificate to original
-    await prisma.certificate.update({
-      where: { id: newCertificate.id },
-      data: {
-        previousVersionId: originalCertificateId,
-      },
-    });
-
-    logger.info(`Certificate reissued: ${originalCertificateId} -> ${newCertificate.id}`, {
-      originalId: originalCertificateId,
-      newId: newCertificate.id,
-      reason,
-      issuedBy,
-    });
-
-    return { original, new: newCertificate };
   }
 
   /**
@@ -406,7 +305,14 @@ export class CertificateService {
     const certificate = await prisma.certificate.findFirst({
       where: { tokenId },
       include: {
-        student: true,
+        student: {
+          select: {
+            walletAddress: true,
+            did: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
         course: true,
       },
     });
@@ -415,7 +321,7 @@ export class CertificateService {
       return null;
     }
 
-    return this.metadataGenerator.generate(certificate, certificate.course, certificate.student);
+    return this.metadataGenerator.generate(certificate, certificate.course!, certificate.student);
   }
 
   /**
@@ -425,7 +331,14 @@ export class CertificateService {
     return await prisma.certificate.findUnique({
       where: { id: certificateId },
       include: {
-        student: true,
+        student: {
+          select: {
+            walletAddress: true,
+            did: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
         course: true,
       },
     });
@@ -440,7 +353,14 @@ export class CertificateService {
     const certificates = await prisma.certificate.findMany({
       where: { studentId },
       include: {
-        student: true,
+        student: {
+          select: {
+            walletAddress: true,
+            did: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
         course: true,
       },
       orderBy: { issuedAt: 'desc' },
@@ -448,18 +368,23 @@ export class CertificateService {
 
     return certificates.map((cert) => ({
       ...cert,
-      metadata: this.metadataGenerator.generate(cert, cert.course, cert.student),
+      metadata: this.metadataGenerator.generate(cert, cert.course!, cert.student),
     }));
   }
 
   /**
    * Gets certificates by status (for admin/issuer)
    */
-  async getCertificatesByStatus(status: CertificateStatus): Promise<Certificate[]> {
+  async getCertificatesByStatus(status: string): Promise<Certificate[]> {
     return await prisma.certificate.findMany({
       where: { status },
       include: {
-        student: true,
+        student: {
+          select: {
+            walletAddress: true,
+            did: true,
+          },
+        },
         course: true,
       },
       orderBy: { issuedAt: 'desc' },
@@ -479,7 +404,12 @@ export class CertificateService {
     const [certificates, total] = await Promise.all([
       prisma.certificate.findMany({
         include: {
-          student: true,
+          student: {
+            select: {
+              walletAddress: true,
+              did: true,
+            },
+          },
           course: true,
         },
         orderBy: { issuedAt: 'desc' },
@@ -495,21 +425,14 @@ export class CertificateService {
   /**
    * Get analytics for certificates
    */
-  async getAnalytics(): Promise<{
-    totalCertificates: number;
-    byStatus: Record<string, number>;
-    totalVerifications: number;
-    uniqueStudents: number;
-    uniqueCourses: number;
-    revocationRate: number;
-  }> {
+  async getAnalytics() {
     const totalCertificates = await prisma.certificate.count();
-    const byStatus = await prisma.certificate.groupBy({
+    const byStatusRaw = await prisma.certificate.groupBy({
       by: ['status'],
       _count: { status: true },
     });
 
-    const statusCounts = byStatus.reduce(
+    const byStatus = byStatusRaw.reduce(
       (acc, item) => {
         acc[item.status] = item._count.status;
         return acc;
@@ -517,78 +440,43 @@ export class CertificateService {
       {} as Record<string, number>
     );
 
-    const uniqueStudents = await prisma.certificate
-      .groupBy({
-        by: ['studentId'],
-        _count: { studentId: true },
-      })
-      .then((r) => r.length);
+    const uniqueStudents = await prisma.certificate.groupBy({
+      by: ['studentId'],
+      _count: { studentId: true },
+    });
 
-    const uniqueCourses = await prisma.certificate
-      .groupBy({
-        by: ['courseId'],
-        _count: { courseId: true },
-      })
-      .then((r) => r.length);
+    const uniqueCourses = await prisma.certificate.groupBy({
+      by: ['courseId'],
+      _count: { courseId: true },
+    });
 
-    // Total verifications can be tracked via analytics (would need a separate table)
-    // For now return estimated based on certificate count or 0 if no table exists
-    const totalVerifications = 0;
-
-    const revokedCount = statusCounts[CertificateStatus.REVOKED] || 0;
+    const revokedCount = byStatus['REVOKED'] || 0;
     const revocationRate = totalCertificates > 0 ? revokedCount / totalCertificates : 0;
 
     return {
       totalCertificates,
-      byStatus: statusCounts,
-      totalVerifications,
-      uniqueStudents,
-      uniqueCourses,
+      byStatus,
+      totalVerifications: 0,
+      uniqueStudents: uniqueStudents.length,
+      uniqueCourses: uniqueCourses.length,
       revocationRate,
+      issuedThisMonth: 0,
+      issuedThisWeek: 0,
+      issuedToday: 0,
     };
   }
 
   /**
-   * Helper function to get student wallet address
-   * In production this would be from the Student model or profile
+   * Extracts wallet address from DID string
    */
-  private async getStudentWalletAddress(studentId: string): Promise<string> {
-    const student = await prisma.student.findUnique({
-      where: { id: studentId },
-      select: { walletAddress: true, did: true },
-    });
+  private extractWalletFromDid(did?: string | null): string {
+    if (!did) return 'GUNKNOWNWALLETADDRESS';
 
-    if (!student) {
-      throw new Error(`Student ${studentId} not found`);
+    const parts = did.split(':');
+    if (parts.length === 3 && parts[0] === 'did' && parts[1] === 'stellar') {
+      return parts[2] || '';
     }
-
-    // Return the wallet address or derive from DID
-    if (student.walletAddress) {
-      return student.walletAddress;
-    }
-
-    if (student.did) {
-      // Extract Stellar address from DID (assuming did:stellar format)
-      // did:stellar:GBRPYHIL2CI3FYQMWVUGE62KMGOBQKLCYJ3HLKBUBIW5VZH4S4MNOWT
-      const parts = student.did.split(':');
-      if (parts.length === 3 && parts[0] === 'did' && parts[1] === 'stellar') {
-        return parts[2];
-      }
-    }
-
-    return 'GUNKNOWNWALLETADDRESSUNKNOWN'; // Placeholder
-  }
-
-  /**
-   * Generates a random hash
-   */
-  private generateRandomHash(): string {
-    const chars = '0123456789abcdef';
-    let result = '';
-    for (let i = 0; i < 64; i++) {
-      result += chars[Math.floor(Math.random() * chars.length)];
-    }
-    return result;
+    return 'GUNKNOWNWALLETADDRESS';
   }
 }
 

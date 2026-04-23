@@ -1,7 +1,6 @@
 import prisma from '../db/index.js';
 import {
   Certificate,
-  CertificateStatus,
   RevokeCertificateRequest,
   ReissueCertificateRequest,
 } from '../types/certificate.types.js';
@@ -36,18 +35,16 @@ export class RevocationService {
     }
 
     // Check if already revoked
-    if (certificate.status === CertificateStatus.REVOKED) {
+    if (certificate.status === 'REVOKED') {
       throw new Error('Certificate is already revoked');
     }
 
     // Check if certificate can be revoked
-    if (certificate.status === CertificateStatus.EXPIRED) {
+    if (certificate.status === 'EXPIRED') {
       throw new Error('Expired certificates cannot be revoked');
     }
 
-    // Check if issuer is authorized (must be the original issuer or admin)
-    // For now, we only check that the revokedBy is provided
-    // In production, this would verify that the caller has administrator or instructor role
+    // Check if issuer is authorized
     if (!revokedBy) {
       throw new Error('Revocation requires a valid issuer DID');
     }
@@ -56,7 +53,7 @@ export class RevocationService {
     const updated = await prisma.certificate.update({
       where: { id: certificateId },
       data: {
-        status: CertificateStatus.REVOKED,
+        status: 'REVOKED',
         revokedAt: new Date(),
         revocationReason: reason,
         revokedBy,
@@ -98,11 +95,11 @@ export class RevocationService {
     }
 
     // Validate reissuance eligibility
-    if (original.status === CertificateStatus.REVOKED) {
+    if (original.status === 'REVOKED') {
       throw new Error('Cannot reissue a revoked certificate');
     }
 
-    if (original.status === CertificateStatus.EXPIRED) {
+    if (original.status === 'EXPIRED') {
       throw new Error('Cannot reissue an expired certificate');
     }
 
@@ -115,7 +112,7 @@ export class RevocationService {
     await prisma.certificate.update({
       where: { id: certificateId },
       data: {
-        status: CertificateStatus.REISSUED,
+        status: 'REISSUED',
         updatedAt: new Date(),
       },
     });
@@ -126,12 +123,12 @@ export class RevocationService {
         studentId: original.studentId,
         courseId: original.courseId,
         grade: newGrade || original.grade || undefined,
-        tokenId: original.tokenId, // Keep same tokenId
+        tokenId: original.tokenId || undefined,
         did: original.did,
       },
       issuedBy,
-      original.contractAddress!,
-      original.network!
+      original.contractAddress || '',
+      original.network || 'stellar-testnet'
     );
 
     // Update new certificate to link to original
@@ -154,7 +151,6 @@ export class RevocationService {
 
   /**
    * Bulk revokes multiple certificates
-   * Useful for administrative actions (e.g., course cancellation)
    */
   async bulkRevoke(
     certificateIds: string[],
@@ -182,83 +178,6 @@ export class RevocationService {
     });
 
     return { revoked: revokedCount, failed: failedCount, errors };
-  }
-
-  /**
-   * Gets revocation history for a certificate
-   */
-  async getRevocationHistory(certificateId: string): Promise<
-    Array<{
-      certificateId: string;
-      action: 'revoke' | 'reissue';
-      timestamp: Date;
-      reason: string;
-      performedBy: string;
-      relatedCertificateId?: string;
-    }>
-  > {
-    const history: any[] = [];
-
-    // Check original certificate
-    const cert = await prisma.certificate.findUnique({
-      where: { id: certificateId },
-    });
-
-    if (!cert) {
-      throw new Error('Certificate not found');
-    }
-
-    // Add revocation event if revoked
-    if (cert.status === CertificateStatus.REVOKED) {
-      history.push({
-        certificateId: cert.id,
-        action: 'revoke',
-        timestamp: cert.revokedAt!,
-        reason: cert.revocationReason!,
-        performedBy: cert.revokedBy!,
-      });
-    }
-
-    // If reissued, find the newer version
-    if (cert.status === CertificateStatus.REISSUED) {
-      const newer = await prisma.certificate.findFirst({
-        where: { previousVersionId: certificateId },
-      });
-
-      if (newer) {
-        history.push({
-          certificateId: newer.id,
-          action: 'reissue',
-          timestamp: newer.issuedAt,
-          reason: 'Certificate reissued',
-          performedBy: newer.did || 'unknown',
-          relatedCertificateId: certificateId,
-        });
-      }
-    }
-
-    return history;
-  }
-
-  /**
-   * Checks if a certificate is eligible for revocation
-   */
-  canBeRevoked(certificate: Certificate): boolean {
-    return (
-      certificate.status === CertificateStatus.ACTIVE ||
-      certificate.status === CertificateStatus.MINTED
-    );
-  }
-
-  /**
-   * Checks if a certificate is eligible for reissuance
-   */
-  canBeReissued(certificate: Certificate): boolean {
-    return (
-      certificate.status === CertificateStatus.ACTIVE ||
-      certificate.status === CertificateStatus.MINTED ||
-      certificate.status === CertificateStatus.REVOKED
-    );
   }
 }
 

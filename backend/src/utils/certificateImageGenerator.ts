@@ -1,196 +1,103 @@
-import { createCanvas, loadImage, registerFont } from 'canvas';
 import { CertificateImageOptions } from '../types/certificate.types.js';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import logger from './logger.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Check if canvas is available
-let canvasAvailable = false;
-try {
-  require.resolve('canvas');
-  canvasAvailable = true;
-} catch (e) {
-  // canvas not installed
-}
 
 /**
  * Certificate Image Generator
- * Creates PNG images of certificates with customizable styling
+ * Generates SVG certificate images (PNG via external conversion if needed)
+ * Works without native dependencies
  */
 export class CertificateImageGenerator {
   private readonly width: number;
   private readonly height: number;
-  private readonly basePath: string;
 
   constructor() {
     this.width = 1200;
     this.height = 800;
-    this.basePath = process.env.CERT_IMAGE_BASE_PATH || __dirname;
   }
 
   /**
-   * Generates a certificate PNG image
+   * Generates a certificate as SVG buffer
+   * Returns SVG XML that can be served directly or converted to PNG
    */
   async generateCertificateImage(options: CertificateImageOptions): Promise<Buffer> {
-    if (!canvasAvailable) {
-      return this.generatePlaceholderImage(options);
+    try {
+      const svg = this.generateSVG(options);
+      return Buffer.from(svg, 'utf-8');
+    } catch (error) {
+      logger.error('Failed to generate certificate image:', error);
+      throw new Error(
+        `Image generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
     }
-
-    return await this.renderCertificate(options);
   }
 
   /**
-   * Generates a certificate using canvas
+   * Generates a professional SVG certificate
    */
-  private async renderCertificate(options: CertificateImageOptions): Promise<Buffer> {
-    const canvas = createCanvas(this.width, this.height);
-    const ctx = canvas.getContext('2d');
-
-    // Background
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, this.width, this.height);
-
-    // Border
-    ctx.strokeStyle = '#1a56db';
-    ctx.lineWidth = 20;
-    ctx.strokeRect(40, 40, this.width - 80, this.height - 80);
-
-    // Inner decorative border
-    ctx.strokeStyle = '#e5e7eb';
-    ctx.lineWidth = 4;
-    ctx.strokeRect(60, 60, this.width - 120, this.height - 120);
-
-    // Header
-    ctx.fillStyle = '#1a56db';
-    ctx.fillRect(60, 60, this.width - 120, 80);
-
-    // Title text
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 36px Arial';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('Certificate of Completion', this.width / 2, 100);
-
-    // Credential ID
-    ctx.fillStyle = '#6b7280';
-    ctx.font = '16px Arial';
-    ctx.fillText(`Credential ID: ${options.credentialId}`, this.width / 2, 150);
-
-    // Main content
-    ctx.fillStyle = '#111827';
-    ctx.font = 'bold 28px Arial';
-    ctx.fillText('This certifies that', this.width / 2, 220);
-
-    // Student name
-    ctx.fillStyle = '#1a56db';
-    ctx.font = 'bold 48px Arial';
-    ctx.fillText(options.studentName, this.width / 2, 280);
-
-    // Has successfully completed
-    ctx.fillStyle = '#111827';
-    ctx.font = '24px Arial';
-    ctx.fillText('has successfully completed the course', this.width / 2, 340);
-
-    // Course title
-    ctx.fillStyle = '#1f2937';
-    ctx.font = 'bold 36px Arial';
-    ctx.fillText(`"${options.courseTitle}"`, this.width / 2, 400);
-
-    // Instructor
-    ctx.fillStyle = '#4b5563';
-    ctx.font = '20px Arial';
-    ctx.fillText(`Instructor: ${options.instructor}`, this.width / 2, 460);
-
-    // Dates
-    ctx.font = '18px Arial';
-    ctx.fillText(
-      `Completion Date: ${new Date(options.completionDate).toLocaleDateString()}`,
-      this.width / 2,
-      510
-    );
-
-    // Grade if present
-    if (options.grade) {
-      ctx.fillText(`Final Grade: ${options.grade}`, this.width / 2, 550);
-    }
-
-    // Issuer
-    ctx.fillStyle = '#374151';
-    ctx.font = 'bold 22px Arial';
-    ctx.fillText(options.issuerName, this.width / 2, 630);
-
-    // QR code placeholder (in real implementation would render QR)
-    if (options.credentialId) {
-      await this.drawQRCode(ctx, options.credentialId, 1000, 600, 120);
-    }
-
-    // Date string at bottom
-    ctx.fillStyle = '#9ca3af';
-    ctx.font = '14px Arial';
-    ctx.fillText(`Generated: ${new Date().toLocaleDateString()}`, this.width / 2, this.height - 80);
-
-    return canvas.toBuffer('image/png');
-  }
-
-  /**
-   * Placeholder image generation (when canvas not available)
-   */
-  private generatePlaceholderImage(options: CertificateImageOptions): Buffer {
-    // Create a simple SVG-based placeholder
-    const svg = this.generateSVGPlaceholder(options);
-    return Buffer.from(svg);
-  }
-
-  /**
-   * Generates an SVG certificate as placeholder
-   */
-  private generateSVGPlaceholder(options: CertificateImageOptions): string {
-    const { studentName, courseTitle, instructor, completionDate, credentialId, issuerName } =
-      options;
+  private generateSVG(options: CertificateImageOptions): string {
+    const {
+      studentName,
+      courseTitle,
+      instructor,
+      completionDate,
+      grade,
+      credentialId,
+      issuerName,
+    } = options;
 
     const formattedDate = new Date(completionDate).toLocaleDateString();
+    const gradeSection = grade
+      ? `
+    <text x="50%" y="650" font-family="Arial" font-size="22" fill="#374151" text-anchor="middle">Final Grade: ${grade}</text>`
+      : '';
 
-    return `<svg width="${this.width}" height="${this.height}" xmlns="http://www.w3.org/2000/svg">
+    return `<svg width="${this.width}" height="${this.height}" xmlns="http://www.w3.org/2000/svg" style="font-family: Arial, Helvetica, sans-serif;">
+  <!-- Background -->
   <rect width="100%" height="100%" fill="#ffffff"/>
-  <rect x="60" y="60" width="${this.width - 120}" height="${this.height - 120}" fill="none" stroke="#e5e7eb" stroke-width="4"/>
-  <rect x="60" y="60" width="${this.width - 120}" height="80" fill="#1a56db"/>
-  <text x="50%" y="100" font-family="Arial" font-size="36" font-weight="bold" fill="white" text-anchor="middle">Certificate of Completion</text>
-  <text x="50%" y="150" font-family="Arial" font-size="16" fill="#6b7280" text-anchor="middle">Credential ID: ${credentialId}</text>
-  <text x="50%" y="220" font-family="Arial" font-size="24" fill="#111827" text-anchor="middle">This certifies that</text>
-  <text x="50%" y="280" font-family="Arial" font-size="48" font-weight="bold" fill="#1a56db" text-anchor="middle">${this.escapeXml(studentName)}</text>
-  <text x="50%" y="340" font-family="Arial" font-size="24" fill="#111827" text-anchor="middle">has successfully completed the course</text>
-  <text x="50%" y="400" font-family="Arial" font-size="36" font-weight="bold" fill="#1f2937" text-anchor="middle">"${this.escapeXml(courseTitle)}"</text>
-  <text x="50%" y="460" font-family="Arial" font-size="20" fill="#4b5563" text-anchor="middle">Instructor: ${this.escapeXml(instructor)}</text>
-  <text x="50%" y="510" font-family="Arial" font-size="18" fill="#374151" text-anchor="middle">Completion Date: ${formattedDate}</text>
-  <text x="50%" y="630" font-family="Arial" font-size="22" font-weight="bold" fill="#374151" text-anchor="middle">${this.escapeXml(issuerName)}</text>
+  
+  <!-- Decorative border -->
+  <rect x="40" y="40" width="${this.width - 80}" height="${this.height - 80}" fill="none" stroke="#1a56db" stroke-width="6"/>
+  <rect x="50" y="50" width="${this.width - 100}" height="${this.height - 100}" fill="none" stroke="#e5e7eb" stroke-width="2"/>
+  
+  <!-- Header banner -->
+  <rect x="50" y="50" width="${this.width - 100}" height="100" fill="#1a56db" rx="4"/>
+  
+  <!-- Title -->
+  <text x="50%" y="105" font-family="Arial" font-size="40" font-weight="bold" fill="white" text-anchor="middle">Certificate of Completion</text>
+  
+  <!-- Credential ID -->
+  <text x="50%" y="170" font-family="Arial" font-size="16" fill="#6b7280" text-anchor="middle">Credential ID: ${this.escapeXml(credentialId)}</text>
+  
+  <!-- "This certifies that" -->
+  <text x="50%" y="260" font-family="Arial" font-size="26" fill="#374151" text-anchor="middle">This certifies that</text>
+  
+  <!-- Student name -->
+  <text x="50%" y="340" font-family="Arial" font-size="52" font-weight="bold" fill="#1a56db" text-anchor="middle">${this.escapeXml(studentName)}</text>
+  
+  <!-- Course completion text -->
+  <text x="50%" y="420" font-family="Arial" font-size="26" fill="#374151" text-anchor="middle">has successfully completed the course</text>
+  
+  <!-- Course title -->
+  <text x="50%" y="500" font-family="Arial" font-size="38" font-weight="bold" fill="#111827" text-anchor="middle">"${this.escapeXml(courseTitle)}"</text>
+  
+  <!-- Instructor -->
+  <text x="50%" y="570" font-family="Arial" font-size="22" fill="#4b5563" text-anchor="middle">Instructor: ${this.escapeXml(instructor)}</text>
+  
+  <!-- Completion date -->
+  <text x="50%" y="630" font-family="Arial" font-size="20" fill="#6b7280" text-anchor="middle">Completion Date: ${formattedDate}</text>
+  
+  ${gradeSection}
+  
+  <!-- Issuer -->
+  <text x="50%" y="730" font-family="Arial" font-size="24" font-weight="bold" fill="#111827" text-anchor="middle">${this.escapeXml(issuerName)}</text>
+  
+  <!-- Generated timestamp -->
+  <text x="50%" y="${this.height - 60}" font-family="Arial" font-size="12" fill="#9ca3af" text-anchor="middle">Generated: ${new Date().toISOString().split('T')[0]}</text>
 </svg>`;
   }
 
   /**
-   * Draws QR code placeholder on canvas
-   */
-  private async drawQRCode(
-    ctx: any,
-    data: string,
-    x: number,
-    y: number,
-    size: number
-  ): Promise<void> {
-    // Draw placeholder rectangle
-    ctx.fillStyle = '#f3f4f6';
-    ctx.fillRect(x, y, size, size);
-
-    ctx.fillStyle = '#9ca3af';
-    ctx.font = '12px Arial';
-    ctx.textAlign = 'center';
-    ctx.fillText('QR', x + size / 2, y + size / 2 + 4);
-  }
-
-  /**
-   * Escapes XML special characters for SVG
+   * Escapes XML special characters
    */
   private escapeXml(text: string): string {
     return text
@@ -202,8 +109,7 @@ export class CertificateImageGenerator {
   }
 
   /**
-   * Generates a certificate template for a specific style
-   * In production, this could support multiple templates
+   * Gets available template styles
    */
   getTemplateNames(): string[] {
     return ['professional-blue', 'modern-minimal', 'classic-gold', 'tech-dark'];

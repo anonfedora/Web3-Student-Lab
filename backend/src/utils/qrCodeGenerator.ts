@@ -1,4 +1,4 @@
-import { QRCode } from 'qrcode';
+import QRCode from 'qrcode';
 import { QRCodeOptions } from '../types/certificate.types.js';
 import logger from './logger.js';
 import { VERIFICATION_URL } from '../config/rpcConfig.js';
@@ -22,7 +22,7 @@ export class QRCodeGenerator {
    * @returns Promise<string> - Data URL containing QR code image
    */
   async generateQRCode(options: QRCodeOptions): Promise<string> {
-    const { data, size = this.defaultSize, format = 'png' } = options;
+    const { data, size = this.defaultSize } = options;
 
     try {
       const qrDataUrl = await QRCode.toDataURL(data, {
@@ -32,7 +32,7 @@ export class QRCodeGenerator {
           dark: '#000000',
           light: '#ffffff',
         },
-        errorCorrectionLevel: 'H', // High error correction for better scanning
+        errorCorrectionLevel: 'H',
       });
 
       logger.debug(`QR code generated for ${data.substring(0, 30)}...`, { size });
@@ -46,7 +46,9 @@ export class QRCodeGenerator {
   }
 
   /**
-   * Generates a QR code as a Buffer
+   * Generates a QR code as a Buffer (PNG)
+   * @param options - QR code options
+   * @returns Promise<Buffer> - PNG buffer
    */
   async generateQRCodeBuffer(options: QRCodeOptions): Promise<Buffer> {
     const { data, size = this.defaultSize } = options;
@@ -88,14 +90,12 @@ export class QRCodeGenerator {
 
   /**
    * Generates QR code for a direct on-chain verification link
-   * Includes network info
    */
   async generateOnChainVerificationQR(
     tokenId: string,
     contractAddress: string,
     network: string = 'stellar-testnet'
   ): Promise<string> {
-    // Stellar Explorer URL
     const explorerUrl =
       network === 'stellar-testnet'
         ? `https://testnet.steexp.com/contract/${contractAddress}`
@@ -113,7 +113,6 @@ export class QRCodeGenerator {
 
   /**
    * Generates a vCard-style credential card with QR
-   * For easy sharing in wallet apps
    */
   async generateCredentialCardQR(
     certificateId: string,
@@ -139,7 +138,6 @@ export class QRCodeGenerator {
   async generateBatchQR(tokenIds: string[]): Promise<Map<string, string>> {
     const results = new Map<string, string>();
 
-    // Generate in parallel but with some concurrency control
     const batchSize = 10;
     for (let i = 0; i < tokenIds.length; i += batchSize) {
       const batch = tokenIds.slice(i, i + batchSize);
@@ -151,7 +149,6 @@ export class QRCodeGenerator {
         results.set(tokenId, batchResults[idx]);
       });
 
-      // Small delay to avoid rate limiting
       if (i + batchSize < tokenIds.length) {
         await this.delay(100);
       }
@@ -165,20 +162,18 @@ export class QRCodeGenerator {
    */
   validateQRData(data: string): { valid: boolean; type?: string; tokenId?: string } {
     try {
-      // Try parsing as JSON credential
       const parsed = JSON.parse(data);
       if (parsed.type === 'Web3-Student-Lab-Certificate') {
         return {
           valid: true,
           type: 'credential',
-          tokenId: parsed.certificateId,
+          tokenId: parsed.certificateId as string,
         };
       }
 
-      // Check if it's a verification URL
       if (data.startsWith(this.baseVerificationUrl)) {
         const parts = data.split('/');
-        const tokenId = parts[parts.length - 1];
+        const tokenId = parts[parts.length - 1] as string;
         return {
           valid: true,
           type: 'verification-url',

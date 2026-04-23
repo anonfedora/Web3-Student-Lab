@@ -1,7 +1,22 @@
 import { Request, Response } from 'express';
-import { z } from 'zod';
-import { certificateService, verificationService, revocationService } from './index.js';
+import {
+  certificateService,
+  verificationService,
+  revocationService,
+  certificateAnalytics,
+} from './index.js';
+import { qrCodeGenerator } from '../utils/qrCodeGenerator.js';
+import { certificateImageGenerator } from '../utils/certificateImageGenerator.js';
 import logger from '../utils/logger.js';
+
+/**
+ * Helper to convert param to string
+ */
+function getStringParam(value: string | string[] | undefined): string {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value) && value.length > 0) return value[0] || '';
+  return '';
+}
 
 /**
  * Certificate Controller
@@ -14,30 +29,20 @@ export class CertificateController {
    */
   async verifyCertificate(req: Request, res: Response): Promise<void> {
     try {
-      const { tokenId } = req.params;
-
-      if (!tokenId || typeof tokenId !== 'string') {
-        res.status(400).json({
-          error: 'Invalid token ID',
-          isValid: false,
-        });
+      const tokenId = getStringParam(req.params.tokenId);
+      if (!tokenId) {
+        res.status(400).json({ error: 'Token ID is required', isValid: false });
         return;
       }
 
       const result = await verificationService.verifyByTokenId(tokenId);
-
-      // Record verification for analytics (non-blocking)
-      verificationService.recordVerification(tokenId).catch(console.error);
-
+      verificationService.recordVerification(tokenId).catch(() => {});
       res.status(200).json(result);
     } catch (error) {
       logger.error(
         `Verification error: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
-      res.status(500).json({
-        error: 'Failed to verify certificate',
-        isValid: false,
-      });
+      res.status(500).json({ error: 'Failed to verify certificate', isValid: false });
     }
   }
 
@@ -48,39 +53,26 @@ export class CertificateController {
   async batchVerify(req: Request, res: Response): Promise<void> {
     try {
       const { tokenIds } = req.body;
-
-      // Validate input
       if (!Array.isArray(tokenIds)) {
-        res.status(400).json({
-          error: 'tokenIds must be an array',
-        });
+        res.status(400).json({ error: 'tokenIds must be an array' });
         return;
       }
-
       if (tokenIds.length > 100) {
-        res.status(400).json({
-          error: 'Maximum 100 certificates allowed per batch',
-        });
+        res.status(400).json({ error: 'Maximum 100 certificates allowed per batch verification' });
         return;
       }
-
       if (tokenIds.length === 0) {
-        res.status(400).json({
-          error: 'tokenIds array cannot be empty',
-        });
+        res.status(400).json({ error: 'tokenIds array cannot be empty' });
         return;
       }
 
       const results = await verificationService.batchVerify(tokenIds);
-
       res.status(200).json(results);
     } catch (error) {
       logger.error(
         `Batch verification error: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
-      res.status(500).json({
-        error: 'Failed to perform batch verification',
-      });
+      res.status(500).json({ error: 'Failed to perform batch verification' });
     }
   }
 
@@ -90,21 +82,18 @@ export class CertificateController {
    */
   async getMetadata(req: Request, res: Response): Promise<void> {
     try {
-      const { tokenId } = req.params;
-
+      const tokenId = getStringParam(req.params.tokenId);
       if (!tokenId) {
         res.status(400).json({ error: 'Token ID is required' });
         return;
       }
 
       const metadata = await verificationService.getMetadata(tokenId);
-
       if (!metadata) {
         res.status(404).json({ error: 'Certificate not found' });
         return;
       }
 
-      // Set content type for NFT metadata (should be application/json)
       res.set('Content-Type', 'application/json');
       res.status(200).json(metadata);
     } catch (error) {
@@ -121,10 +110,13 @@ export class CertificateController {
    */
   async getCertificate(req: Request, res: Response): Promise<void> {
     try {
-      const { certificateId } = req.params;
+      const certificateId = getStringParam(req.params.certificateId);
+      if (!certificateId) {
+        res.status(400).json({ error: 'Certificate ID is required' });
+        return;
+      }
 
       const certificate = await certificateService.getCertificateById(certificateId);
-
       if (!certificate) {
         res.status(404).json({ error: 'Certificate not found' });
         return;
@@ -145,15 +137,14 @@ export class CertificateController {
    */
   async getCertificatesByStudent(req: Request, res: Response): Promise<void> {
     try {
-      const { studentId } = req.params;
+      const studentId = getStringParam(req.params.studentId);
+      if (!studentId) {
+        res.status(400).json({ error: 'Student ID is required' });
+        return;
+      }
 
       const certificates = await certificateService.getCertificatesByStudent(studentId);
-
-      res.status(200).json({
-        studentId,
-        count: certificates.length,
-        certificates,
-      });
+      res.status(200).json({ studentId, count: certificates.length, certificates });
     } catch (error) {
       logger.error(
         `Get student certificates error: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -164,60 +155,48 @@ export class CertificateController {
 
   /**
    * POST /api/certificates
-   * Mint a new certificate (Issuer only - would require auth middleware)
+   * Mint a new certificate
    */
   async mintCertificate(req: Request, res: Response): Promise<void> {
     try {
-      const body = req.body;
-
-      // Validate required fields
-      const { studentId, courseId, tokenId, grade, did } = body;
+      const { studentId, courseId, tokenId, grade, did } = req.body as {
+        studentId: string;
+        courseId: string;
+        tokenId?: string;
+        grade?: string;
+        did?: string;
+      };
 
       if (!studentId || !courseId) {
-        res.status(400).json({
-          error: 'studentId and courseId are required',
-        });
+        res.status(400).json({ error: 'studentId and courseId are required' });
         return;
       }
 
-      // Get issuer info from request (would come from auth middleware)
       const issuerDid =
-        (req as any).user?.did ||
-        (req as any).user?.walletAddress ||
         process.env.ISSUER_DID ||
         'did:stellar:GBRPYHIL2CI3FYQMWVUGE62KMGOBQKLCYJ3HLKBUBIW5VZH4S4MNOWT';
-
-      const contractAddress = process.env.CERTIFICATE_CONTRACT_ADDRESS || 'GUNKNOWNCONTRACT';
+      const contractAddress = process.env.CERTIFICATE_CONTRACT_ID || 'GUNKNOWNCONTRACT';
       const network = process.env.STELLAR_NETWORK || 'stellar-testnet';
 
       const result = await certificateService.mintCertificate(
-        {
-          studentId,
-          courseId,
-          tokenId,
-          grade,
-          did,
-        },
+        { studentId, courseId, tokenId, grade, did },
         issuerDid,
         contractAddress,
         network
       );
 
       logger.info(`Certificate minted: ${result.id}`, { certificateId: result.id });
-
-      res.status(201).json({
-        success: true,
-        certificate: result,
-        metadata: result.metadata,
-      });
+      res.status(201).json({ success: true, certificate: result, metadata: result.metadata });
     } catch (error) {
       logger.error(
         `Mint certificate error: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
-      res.status(500).json({
-        error: error instanceof Error ? error.message : 'Failed to mint certificate',
-        success: false,
-      });
+      res
+        .status(500)
+        .json({
+          error: error instanceof Error ? error.message : 'Failed to mint certificate',
+          success: false,
+        });
     }
   }
 
@@ -227,14 +206,13 @@ export class CertificateController {
    */
   async revokeCertificate(req: Request, res: Response): Promise<void> {
     try {
-      const { certificateId } = req.params;
+      const certificateId = getStringParam(req.params.certificateId);
       const { reason, revokedBy } = req.body;
 
       if (!reason) {
         res.status(400).json({ error: 'Revocation reason is required' });
         return;
       }
-
       if (!revokedBy) {
         res.status(400).json({ error: 'revokedBy is required' });
         return;
@@ -245,17 +223,14 @@ export class CertificateController {
         reason,
         revokedBy,
       });
-
-      res.status(200).json({
-        success: true,
-        certificate: result,
-        message: 'Certificate revoked successfully',
-      });
+      res
+        .status(200)
+        .json({ success: true, certificate: result, message: 'Certificate revoked successfully' });
     } catch (error) {
       logger.error(`Revoke error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      res.status(500).json({
-        error: error instanceof Error ? error.message : 'Failed to revoke certificate',
-      });
+      res
+        .status(500)
+        .json({ error: error instanceof Error ? error.message : 'Failed to revoke certificate' });
     }
   }
 
@@ -265,14 +240,13 @@ export class CertificateController {
    */
   async reissueCertificate(req: Request, res: Response): Promise<void> {
     try {
-      const { certificateId } = req.params;
+      const certificateId = getStringParam(req.params.certificateId);
       const { reason, newGrade, issuedBy } = req.body;
 
       if (!reason) {
         res.status(400).json({ error: 'Reissuance reason is required' });
         return;
       }
-
       if (!issuedBy) {
         res.status(400).json({ error: 'issuedBy is required' });
         return;
@@ -284,18 +258,19 @@ export class CertificateController {
         newGrade,
         issuedBy,
       });
-
-      res.status(200).json({
-        success: true,
-        original: result.original,
-        newCertificate: result.new,
-        message: 'Certificate reissued successfully',
-      });
+      res
+        .status(200)
+        .json({
+          success: true,
+          original: result.original,
+          newCertificate: result.new,
+          message: 'Certificate reissued successfully',
+        });
     } catch (error) {
       logger.error(`Reissue error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      res.status(500).json({
-        error: error instanceof Error ? error.message : 'Failed to reissue certificate',
-      });
+      res
+        .status(500)
+        .json({ error: error instanceof Error ? error.message : 'Failed to reissue certificate' });
     }
   }
 
@@ -307,19 +282,16 @@ export class CertificateController {
     try {
       const limit = parseInt(req.query.limit as string) || 50;
       const offset = parseInt(req.query.offset as string) || 0;
-      const status = req.query.status as string;
+      const status = req.query.status as string | undefined;
 
       if (limit > 100) {
         res.status(400).json({ error: 'Limit cannot exceed 100' });
         return;
       }
 
-      let result;
-      if (status) {
-        result = await certificateService.getCertificatesByStatus(status as any);
-      } else {
-        result = await certificateService.getAllCertificates(limit, offset);
-      }
+      const result = status
+        ? await certificateService.getCertificatesByStatus(status)
+        : await certificateService.getAllCertificates(limit, offset);
 
       res.status(200).json(result);
     } catch (error) {
@@ -350,27 +322,32 @@ export class CertificateController {
    */
   async getCertificateImage(req: Request, res: Response): Promise<void> {
     try {
-      const { id } = req.params;
-      const { format } = req.query;
+      const id = getStringParam(req.params.id);
+      if (!id) {
+        res.status(400).json({ error: 'Certificate ID is required' });
+        return;
+      }
 
       const certificate = await certificateService.getCertificateById(id);
-
       if (!certificate) {
         res.status(404).json({ error: 'Certificate not found' });
         return;
       }
 
-      // Would generate image
-      // For now, return a placeholder
-      res.set('Content-Type', 'image/png');
-      res.status(200).send(
-        Buffer.from(
-          `<svg width="1200" height="800" xmlns="http://www.w3.org/2000/svg">
-            <rect width="100%" height="100%" fill="#ffffff"/>
-            <text x="50%" y="50%" font-size="48" text-anchor="middle">Certificate Image</text>
-          </svg>`
-        )
-      );
+      const imageBuffer = await certificateImageGenerator.generateCertificateImage({
+        studentName: certificate.student
+          ? `${certificate.student.firstName} ${certificate.student.lastName}`.trim()
+          : 'Student',
+        courseTitle: certificate.course?.title || 'Course',
+        instructor: certificate.course?.instructor || 'Instructor',
+        completionDate: certificate.issuedAt.toISOString(),
+        grade: certificate.grade || undefined,
+        credentialId: certificate.tokenId || id,
+        issuerName: process.env.ISSUER_NAME || 'Web3 Student Lab',
+      });
+
+      res.set('Content-Type', 'image/svg+xml');
+      res.status(200).send(imageBuffer);
     } catch (error) {
       logger.error(
         `Image generation error: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -385,9 +362,8 @@ export class CertificateController {
    */
   async getQRCode(req: Request, res: Response): Promise<void> {
     try {
-      const { id } = req.params;
+      const id = getStringParam(req.params.id);
       const certificate = await certificateService.getCertificateById(id);
-
       if (!certificate) {
         res.status(404).json({ error: 'Certificate not found' });
         return;
@@ -396,9 +372,7 @@ export class CertificateController {
       const qrDataUrl = await qrCodeGenerator.generateCertificateVerificationQR(
         certificate.tokenId || certificate.id
       );
-
       res.set('Content-Type', 'image/png');
-      // Convert base64 to buffer
       const base64Data = qrDataUrl.replace(/^data:image\/png;base64,/, '');
       res.status(200).send(Buffer.from(base64Data, 'base64'));
     } catch (error) {

@@ -83,12 +83,13 @@ export class MetadataGenerator {
    * Builds course information object
    */
   private buildCourseInfo(course: any, certificate: Certificate): CertificateCourseInfo {
+    const dateStr = certificate.issuedAt.toISOString().split('T')[0] || '';
     return {
       id: course.id,
       title: course.title,
       instructor: course.instructor,
       credits: course.credits,
-      completionDate: certificate.issuedAt.toISOString().split('T')[0],
+      completionDate: dateStr,
       grade: certificate.grade || undefined,
     };
   }
@@ -115,7 +116,7 @@ export class MetadataGenerator {
     // did:stellar:GBRPYHIL2CI3FYQMWVUGE62KMGOBQKLCYJ3HLKBUBIW5VZH4S4MNOWT
     const parts = did.split(':');
     if (parts.length === 3 && parts[0] === 'did' && parts[1] === 'stellar') {
-      return parts[2];
+      return parts[2] || '';
     }
     return '';
   }

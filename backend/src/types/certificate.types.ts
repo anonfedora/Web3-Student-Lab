@@ -1,4 +1,4 @@
- // Certificate NFT Metadata Types
+// Certificate NFT Metadata Types
 // Based on OpenSea/ERC-721 metadata standards with educational extensions
 
 export interface CertificateMetadataAttributes {
@@ -30,54 +30,47 @@ export interface CertificateVerificationInfo {
 }
 
 export interface CertificateMetadata {
-  // Required NFT metadata fields (ERC-721 standard)
   name: string;
   description: string;
   image: string;
   external_url: string;
-
-  // Educational attributes (trait-based)
   attributes: CertificateMetadataAttributes[];
-
-  // Educational metadata
   course: CertificateCourseInfo;
   student: CertificateStudentInfo;
   verification: CertificateVerificationInfo;
-
-  // Compliance
   standard: string;
   version: string;
 }
 
-// Certificate Status Enum
-export enum CertificateStatus {
-  MINTED = 'MINTED',
-  ACTIVE = 'ACTIVE',
-  REVOKED = 'REVOKED',
-  REISSUED = 'REISSUED',
-  EXPIRED = 'EXPIRED',
-  PENDING = 'PENDING',
-}
+// Certificate Status (string literal types)
+export type CertificateStatus =
+  | 'MINTED'
+  | 'ACTIVE'
+  | 'REVOKED'
+  | 'REISSUED'
+  | 'EXPIRED'
+  | 'PENDING'
+  | 'FAILED';
 
-// Certificate entity with DB fields
+// Certificate entity with DB fields - matches Prisma output
 export interface Certificate {
   id: string;
   studentId: string;
   courseId: string;
-  tokenId?: string; // On-chain token ID
+  tokenId: string | null;
   issuedAt: Date;
-  certificateHash?: string;
-  status: CertificateStatus;
+  certificateHash: string | null;
+  status: string; // Will be one of CERTIFICATE_STATUS values
   did?: string | null;
-  metadataUri?: string; // Off-chain metadata URI
-  contractAddress?: string;
-  transactionHash?: string;
-  network?: string;
+  metadataUri: string | null;
+  contractAddress: string | null;
+  transactionHash: string | null;
+  network: string | null;
   grade?: string;
   revokedAt?: Date | null;
   revocationReason?: string | null;
   revokedBy?: string | null;
-  previousVersionId?: string | null; // Links to previous cert if reissued
+  previousVersionId?: string | null;
   createdAt: Date;
   updatedAt: Date;
   // Relations
@@ -86,15 +79,15 @@ export interface Certificate {
     firstName: string;
     lastName: string;
     email: string;
-    walletAddress?: string;
-  };
+    walletAddress?: string | null;
+  } | null;
   course?: {
     id: string;
     title: string;
-    description?: string;
+    description?: string | null;
     instructor: string;
     credits: number;
-  };
+  } | null;
 }
 
 // Verification Result
@@ -141,7 +134,7 @@ export interface BatchVerificationResponse {
 export interface MintCertificateRequest {
   studentId: string;
   courseId: string;
-  tokenId?: string; // Optional custom token ID
+  tokenId?: string;
   grade?: string;
   did?: string;
 }
@@ -150,21 +143,21 @@ export interface MintCertificateRequest {
 export interface RevokeCertificateRequest {
   certificateId: string;
   reason: string;
-  revokedBy: string; // Admin/instructor DID
+  revokedBy: string;
 }
 
 // Reissue certificate request
 export interface ReissueCertificateRequest {
-  certificateId: string; // Original cert to reissue
+  certificateId: string;
   reason: string;
   newGrade?: string;
-  issuedBy: string; // Admin/instructor DID
+  issuedBy: string;
 }
 
 // Analytics data
 export interface CertificateAnalytics {
   totalCertificates: number;
-  byStatus: Record<CertificateStatus, number>;
+  byStatus: Record<string, number>; // Use string keys for flexibility
   totalVerifications: number;
   verificationsByDate: { date: string; count: number }[];
   revocationRate: number;
