@@ -1051,6 +1051,316 @@ fn lock_is_released_after_successful_batch_issue() {
 }
 
 // ---------------------------------------------------------------------------
+// Enhanced Batch Minting Tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn mint_batch_certificates_with_grades() {
+    let (env, instructor, _, _, client) = setup();
+
+    env.ledger().with_mut(|ledger| ledger.timestamp = 1_234);
+
+    let recipients = vec![
+        &env,
+        RecipientData {
+            address: Address::generate(&env),
+            course_symbol: symbol_short!("WEB3"),
+            grade: Some(String::from_str(&env, "A+")),
+        },
+        RecipientData {
+            address: Address::generate(&env),
+            course_symbol: symbol_short!("RUST"),
+            grade: Some(String::from_str(&env, "A")),
+        },
+        RecipientData {
+            address: Address::generate(&env),
+            course_symbol: symbol_short!("SMART"),
+            grade: None,
+        },
+    ];
+
+    let course_name = String::from_str(&env, "Blockchain Development");
+    let issued = client.mint_batch_certificates(&instructor, &recipients, &course_name);
+
+    assert_eq!(issued.len(), 3);
+
+    // Verify first certificate with grade
+    let cert1 = issued.get(0).unwrap();
+    assert_eq!(cert1.course_symbol, symbol_short!("WEB3"));
+    assert_eq!(cert1.grade, Some(String::from_str(&env, "A+")));
+    assert_eq!(cert1.course_name, course_name);
+    assert!(!cert1.revoked);
+
+    // Verify second certificate with grade
+    let cert2 = issued.get(1).unwrap();
+    assert_eq!(cert2.grade, Some(String::from_str(&env, "A")));
+
+    // Verify third certificate without grade
+    let cert3 = issued.get(2).unwrap();
+    assert_eq!(cert3.grade, None);
+}
+
+#[test]
+fn mint_batch_certificates_large_batch() {
+    let (env, instructor, admin_a, admin_b, client) = setup();
+
+    // Increase mint cap to accommodate large batch
+    propose_and_approve_mint_cap(&client, &admin_a, &admin_b, 150);
+
+    let mut recipients = Vec::new(&env);
+
+    // Create 50 recipients with simple symbol names
+    let symbol_names = [
+        "C00", "C01", "C02", "C03", "C04", "C05", "C06", "C07", "C08", "C09",
+        "C10", "C11", "C12", "C13", "C14", "C15", "C16", "C17", "C18", "C19",
+        "C20", "C21", "C22", "C23", "C24", "C25", "C26", "C27", "C28", "C29",
+        "C30", "C31", "C32", "C33", "C34", "C35", "C36", "C37", "C38", "C39",
+        "C40", "C41", "C42", "C43", "C44", "C45", "C46", "C47", "C48", "C49",
+    ];
+
+    for symbol_name in symbol_names {
+        recipients.push_back(RecipientData {
+            address: Address::generate(&env),
+            course_symbol: Symbol::new(&env, symbol_name),
+            grade: Some(String::from_str(&env, "B+")),
+        });
+    }
+
+    let course_name = String::from_str(&env, "Large Cohort Course");
+    let issued = client.mint_batch_certificates(&instructor, &recipients, &course_name);
+
+    assert_eq!(issued.len(), 50);
+
+    // Verify all certificates have consistent metadata
+    for cert in issued.iter() {
+        assert_eq!(cert.course_name, course_name);
+        assert!(!cert.revoked);
+        assert_eq!(cert.grade, Some(String::from_str(&env, "B+")));
+    }
+}
+
+#[test]
+#[should_panic(expected = "BatchTooLarge")]
+fn mint_batch_certificates_exceeds_max_size() {
+    let (env, instructor, admin_a, admin_b, client) = setup();
+
+    // Set very high mint cap
+    propose_and_approve_mint_cap(&client, &admin_a, &admin_b, 200);
+
+    let mut recipients = Vec::new(&env);
+
+    // Try to create 101 recipients (exceeds MAX_BATCH_SIZE of 100)
+    for _ in 0..101 {
+        recipients.push_back(RecipientData {
+            address: Address::generate(&env),
+            course_symbol: symbol_short!("EXCEED"),
+            grade: None,
+        });
+    }
+
+    let course_name = String::from_str(&env, "Too Large");
+    client.mint_batch_certificates(&instructor, &recipients, &course_name);
+}
+
+#[test]
+#[should_panic(expected = "EmptyBatch")]
+fn mint_batch_certificates_empty_batch() {
+    let (env, instructor, _, _, client) = setup();
+
+    let recipients = Vec::new(&env);
+    let course_name = String::from_str(&env, "Empty Batch");
+    
+    client.mint_batch_certificates(&instructor, &recipients, &course_name);
+}
+
+#[test]
+#[should_panic(expected = "MintCapExceeded")]
+fn mint_batch_certificates_respects_mint_cap() {
+    let (env, instructor, admin_a, admin_b, client) = setup();
+
+    // Set low mint cap
+    propose_and_approve_mint_cap(&client, &admin_a, &admin_b, 5);
+
+    let mut recipients = Vec::new(&env);
+
+    // Try to mint 10 certificates (exceeds cap of 5)
+    for _ in 0..10 {
+        recipients.push_back(RecipientData {
+            address: Address::generate(&env),
+            course_symbol: symbol_short!("CAP"),
+            grade: None,
+        });
+    }
+
+    let course_name = String::from_str(&env, "Cap Test");
+    client.mint_batch_certificates(&instructor, &recipients, &course_name);
+}
+
+#[test]
+#[should_panic(expected = "NotInstructor")]
+fn mint_batch_certificates_requires_instructor_role() {
+    let (env, _admin_a, _admin_b, _admin_c, client) = setup();
+
+    let student = Address::generate(&env);
+    client.grant_role(&_admin_a, &student, &Role::Student);
+
+    let recipients = vec![
+        &env,
+        RecipientData {
+            address: Address::generate(&env),
+            course_symbol: symbol_short!("TEST"),
+            grade: None,
+        },
+    ];
+
+    let course_name = String::from_str(&env, "Unauthorized");
+    client.mint_batch_certificates(&student, &recipients, &course_name);
+}
+
+#[test]
+#[should_panic(expected = "ContractPaused")]
+fn mint_batch_certificates_fails_when_paused() {
+    let (env, admin_a, _, _, client) = setup();
+
+    client.set_paused(&admin_a, &true);
+
+    let recipients = vec![
+        &env,
+        RecipientData {
+            address: Address::generate(&env),
+            course_symbol: symbol_short!("PAUSED"),
+            grade: None,
+        },
+    ];
+
+    let course_name = String::from_str(&env, "Paused Test");
+    client.mint_batch_certificates(&admin_a, &recipients, &course_name);
+}
+
+#[test]
+#[should_panic(expected = "StringTooLong")]
+fn mint_batch_certificates_validates_grade_length() {
+    let (env, instructor, _, _, client) = setup();
+
+    let recipients = vec![
+        &env,
+        RecipientData {
+            address: Address::generate(&env),
+            course_symbol: symbol_short!("GRADE"),
+            grade: Some(String::from_str(&env, &"A".repeat(11))), // Exceeds 10 char limit
+        },
+    ];
+
+    let course_name = String::from_str(&env, "Grade Validation");
+    client.mint_batch_certificates(&instructor, &recipients, &course_name);
+}
+
+#[test]
+fn mint_batch_certificates_emits_events() {
+    let (env, instructor, _, _, client) = setup();
+
+    let recipients = vec![
+        &env,
+        RecipientData {
+            address: Address::generate(&env),
+            course_symbol: symbol_short!("EVENT1"),
+            grade: Some(String::from_str(&env, "A")),
+        },
+        RecipientData {
+            address: Address::generate(&env),
+            course_symbol: symbol_short!("EVENT2"),
+            grade: Some(String::from_str(&env, "B")),
+        },
+    ];
+
+    let course_name = String::from_str(&env, "Event Test");
+    client.mint_batch_certificates(&instructor, &recipients, &course_name);
+
+    let all_events = env.events().all();
+    let mut batch_completed_found = false;
+
+    for (addr, _topics, _data) in all_events.iter() {
+        if addr == client.address {
+            batch_completed_found = true;
+            break;
+        }
+    }
+
+    assert!(batch_completed_found);
+}
+
+#[test]
+fn batch_issue_validates_max_size() {
+    let (env, instructor, admin_a, admin_b, client) = setup();
+
+    // Set high mint cap
+    propose_and_approve_mint_cap(&client, &admin_a, &admin_b, 150);
+
+    let mut symbols = Vec::new(&env);
+    let mut students = Vec::new(&env);
+
+    // Try to create 101 certificates (exceeds MAX_BATCH_SIZE)
+    for _ in 0..101 {
+        symbols.push_back(symbol_short!("SYM"));
+        students.push_back(Address::generate(&env));
+    }
+
+    let course_name = String::from_str(&env, "Too Large");
+    
+    // This should panic with BatchTooLarge error
+    let result = std::panic::catch_unwind(|| {
+        client.batch_issue(&instructor, &symbols, &students, &course_name);
+    });
+    
+    assert!(result.is_err());
+}
+
+#[test]
+fn batch_issue_validates_empty_batch() {
+    let (env, instructor, _, _, client) = setup();
+
+    let symbols = Vec::new(&env);
+    let students = Vec::new(&env);
+    let course_name = String::from_str(&env, "Empty");
+    
+    // This should panic with EmptyBatch error
+    let result = std::panic::catch_unwind(|| {
+        client.batch_issue(&instructor, &symbols, &students, &course_name);
+    });
+    
+    assert!(result.is_err());
+}
+
+#[test]
+fn lock_is_released_after_mint_batch_certificates() {
+    let (env, instructor, _, _, client) = setup();
+
+    let recipients1 = vec![
+        &env,
+        RecipientData {
+            address: Address::generate(&env),
+            course_symbol: symbol_short!("LOCK1"),
+            grade: None,
+        },
+    ];
+
+    let course_name = String::from_str(&env, "Lock Test");
+    client.mint_batch_certificates(&instructor, &recipients1, &course_name);
+
+    // Must succeed — lock was released
+    let recipients2 = vec![
+        &env,
+        RecipientData {
+            address: Address::generate(&env),
+            course_symbol: symbol_short!("LOCK2"),
+            grade: None,
+        },
+    ];
+
+    client.mint_batch_certificates(&instructor, &recipients2, &course_name);
+}
+
+// ---------------------------------------------------------------------------
 // Versioned events
 // ---------------------------------------------------------------------------
 
