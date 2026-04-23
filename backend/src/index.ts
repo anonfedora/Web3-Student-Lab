@@ -7,6 +7,7 @@ import { requestLogger } from './middleware/requestLogger.js';
 import routes from './routes/index.js';
 import { validateEnvironment } from './utils/checkEnv.js';
 import logger from './utils/logger.js';
+import { initializeWebSocket } from './websocket/WebSocketServer.js';
 
 // Load environment variables
 dotenv.config();
@@ -58,6 +59,8 @@ if (process.env.NODE_ENV !== 'test') {
   server = app.listen(port, () => {
     logger.info(`Server is running on port ${port}`);
   });
+
+  initializeWebSocket(server);
 
   // Graceful shutdown
   process.on('SIGINT', async () => {
