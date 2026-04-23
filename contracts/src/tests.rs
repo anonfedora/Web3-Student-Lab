@@ -1059,3 +1059,15 @@ fn get_event_version_returns_one() {
     let (_env, _a, _b, _c, client) = setup();
     assert_eq!(client.get_event_version(), 1u32);
 }
+
+// ---------------------------------------------------------------------------
+// Revocation & Verification Tests
+// ---------------------------------------------------------------------------
+
+mod revocation_tests {
+    include!("tests/revocation_test.rs");
+}
+
+mod verification_tests {
+    include!("tests/verification_test.rs");
+}
