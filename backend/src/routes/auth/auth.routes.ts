@@ -4,6 +4,7 @@ import { login, register } from '../../auth/auth.service.js';
 import { LoginRequest } from '../../auth/types.js';
 import { loginSchema, registerSchema } from '../../auth/validation.schemas.js';
 import { validateRequest } from '../../utils/validation.js';
+import { rotateRefreshToken, blacklistAccessToken } from '../../auth/token.service.js';
 
 const router = Router();
 
@@ -81,6 +82,46 @@ router.post('/login', validateRequest(loginSchema), async (req: Request, res: Re
 router.get('/me', authenticate, (req: Request, res: Response) => {
   // User is attached to request by authenticate middleware
   res.json({ user: req.user });
+});
+
+
+
+/**
+ * @route   POST /api/auth/refresh
+ * @desc    Rotate refresh token
+ * @access  Public
+ */
+router.post('/refresh', async (req: Request, res: Response) => {
+  const { refreshToken } = req.body;
+
+  if (!refreshToken) {
+    res.status(400).json({ error: 'Refresh token is required' });
+    return;
+  }
+
+  try {
+    const tokens = await rotateRefreshToken(refreshToken);
+    res.json(tokens);
+  } catch (error) {
+    res.status(401).json({ error: 'Invalid or expired refresh token' });
+  }
+});
+
+/**
+ * @route   POST /api/auth/logout
+ * @desc    Logout student and blacklist current access token
+ * @access  Private
+ */
+router.post('/logout', authenticate, async (req: Request, res: Response) => {
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.split(' ')[1];
+
+  if (token) {
+    // Blacklist for 15 minutes (match access token expiry)
+    await blacklistAccessToken(token, 15 * 60);
+  }
+
+  res.json({ message: 'Logged out successfully' });
 });
 
 export default router;

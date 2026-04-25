@@ -82,10 +82,16 @@ export const formatUserResponse = (student: {
   };
 };
 
+import { 
+  generateAccessToken, 
+  generateRefreshToken,
+  TokenPayload 
+} from './token.service.js';
+
 /**
  * Register a new student
  */
-export const register = async (data: RegisterRequest): Promise<AuthResponse> => {
+export const register = async (data: RegisterRequest): Promise<any> => {
   const { email, password, firstName, lastName } = data;
 
   // Check if student already exists
@@ -110,19 +116,22 @@ export const register = async (data: RegisterRequest): Promise<AuthResponse> => 
     },
   });
 
-  // Generate token
-  const token = generateToken(student.id);
+  // Generate tokens
+  const payload: TokenPayload = { userId: student.id };
+  const accessToken = generateAccessToken(payload);
+  const refreshToken = await generateRefreshToken(payload);
 
   return {
     user: formatUserResponse(student),
-    token,
+    accessToken,
+    refreshToken,
   };
 };
 
 /**
  * Login a student
  */
-export const login = async (data: LoginRequest): Promise<AuthResponse> => {
+export const login = async (data: LoginRequest): Promise<any> => {
   const { email, password } = data;
 
   // Find the student
@@ -141,12 +150,15 @@ export const login = async (data: LoginRequest): Promise<AuthResponse> => {
     throw new Error('Invalid credentials');
   }
 
-  // Generate token
-  const token = generateToken(student.id);
+  // Generate tokens
+  const payload: TokenPayload = { userId: student.id };
+  const accessToken = generateAccessToken(payload);
+  const refreshToken = await generateRefreshToken(payload);
 
   return {
     user: formatUserResponse(student),
-    token,
+    accessToken,
+    refreshToken,
   };
 };
 
