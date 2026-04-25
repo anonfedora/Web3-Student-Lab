@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyToken, getStudentById } from './auth.service.js';
+import { isAccessTokenBlacklisted } from './token.service.js';
 import { User } from './types.js';
 
 // Extend Express Request type to include user
@@ -35,8 +36,16 @@ export const authenticate = async (
       return;
     }
 
+
+
     // Verify the token
     const decoded = verifyToken(token);
+
+    // Check if token is blacklisted
+    if (await isAccessTokenBlacklisted(token)) {
+      res.status(401).json({ error: 'Token has been revoked' });
+      return;
+    }
 
     // Get the user from database
     const user = await getStudentById(decoded.userId);
