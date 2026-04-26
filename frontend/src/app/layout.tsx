@@ -20,6 +20,7 @@ export const metadata: Metadata = {
 };
 
 import Navbar from "@/components/layout/Navbar";
+import Onboarding from "@/components/common/Onboarding";
 
 export default function RootLayout({
   children,
@@ -32,6 +33,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-black text-white min-h-screen`}
       >
         <AuthProvider>
+          <Onboarding />
           <Navbar />
           <main className="flex-grow">{children}</main>
         </AuthProvider>

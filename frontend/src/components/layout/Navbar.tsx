@@ -27,7 +27,11 @@ export default function Navbar() {
         <div className="flex justify-between items-center h-20">
           {/* Logo */}
           <div className="flex items-center gap-3">
-            <Link href="/" className="flex items-center gap-3 group">
+            <Link
+              href="/"
+              id="onboarding-logo"
+              className="flex items-center gap-3 group"
+            >
               <div className="w-10 h-10 bg-red-600 rounded-lg flex items-center justify-center transform group-hover:rotate-12 transition-transform duration-300 shadow-[0_0_15px_rgba(220,38,38,0.5)]">
                 <svg
                   className="w-6 h-6 text-white"
@@ -55,6 +59,7 @@ export default function Navbar() {
               <Link
                 key={link.path}
                 href={link.path}
+                id={`nav-${link.name.toLowerCase()}`}
                 className={`text-[10px] font-black tracking-[0.2em] transition-colors uppercase ${
                   isActive(link.path)
                     ? "text-red-500"
@@ -71,6 +76,7 @@ export default function Navbar() {
               <div className="flex items-center gap-4">
                 <Link
                   href="/dashboard"
+                  id="nav-dashboard"
                   className={`text-[10px] font-black tracking-[0.2em] px-4 py-2 border rounded transition-all uppercase ${
                     isActive("/dashboard")
                       ? "bg-red-600 border-red-500 text-white shadow-[0_0_15px_rgba(220,38,38,0.4)]"
