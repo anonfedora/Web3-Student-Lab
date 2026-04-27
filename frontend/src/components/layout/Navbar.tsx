@@ -1,9 +1,9 @@
 "use client";
 
+import { useAuth } from "@/contexts/AuthContext";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { useAuth } from "@/contexts/AuthContext";
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -89,6 +89,7 @@ export default function Navbar() {
                 >
                   VAULT
                 </Link>
+                <NotificationBell />
                 <button
                   onClick={logout}
                   className="w-10 h-10 rounded-full bg-zinc-900 border border-white/10 flex items-center justify-center hover:border-red-500/50 transition-colors group"
