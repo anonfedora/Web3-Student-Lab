@@ -16,6 +16,7 @@ export default function Navbar() {
     { name: "MODULES", path: "/courses" },
     { name: "ROADMAP", path: "/roadmap" },
     { name: "PLAYGROUND", path: "/playground" },
+    { name: "REVIEWS", path: "/peer-review" },
     { name: "SIMULATOR", path: "/simulator" },
     { name: "IDEAS", path: "/ideas" },
     { name: "VERIFY", path: "/verify" },
